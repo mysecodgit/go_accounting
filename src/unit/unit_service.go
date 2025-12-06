@@ -1,0 +1,67 @@
+package unit
+
+type UnitService struct {
+	repo UnitRepository
+}
+
+func NewUnitService(repo UnitRepository) *UnitService {
+	return &UnitService{repo: repo}
+}
+
+func (s *UnitService) CreateUnit(unit Unit) (*Unit, map[string]string, error) {
+	// Field validation
+	if errs := unit.Validate(); errs != nil {
+		return nil, errs, nil // validation errors
+	}
+
+	// Save to DB
+	createdUnit, err := s.repo.Create(unit)
+	if err != nil {
+		return nil, nil, err // internal/server error
+	}
+
+	return &createdUnit, nil, nil // success
+}
+
+func (s *UnitService) GetAllUnits() ([]UnitResponse, error) {
+	units, buildings, err := s.repo.GetAll()
+	if err != nil {
+		return nil, err
+	}
+
+	responses := []UnitResponse{}
+	for i, unit := range units {
+		response := unit.ToUnitResponse(buildings[i])
+		responses = append(responses, response)
+	}
+
+	return responses, nil
+}
+
+func (s *UnitService) GetUnitByID(id int) (*UnitResponse, error) {
+	unit, building, err := s.repo.GetByID(id)
+	if err != nil {
+		return nil, err
+	}
+
+	response := unit.ToUnitResponse(building)
+	return &response, nil
+}
+
+func (s *UnitService) UpdateUnit(id int, unit Unit) (*Unit, map[string]string, error) {
+	// Field validation
+	if errs := unit.Validate(); errs != nil {
+		return nil, errs, nil // validation errors
+	}
+
+	unit.ID = id
+
+	// Update in DB
+	updatedUnit, err := s.repo.Update(unit, id)
+	if err != nil {
+		return nil, nil, err // internal/server error
+	}
+
+	return &updatedUnit, nil, nil // success
+}
+

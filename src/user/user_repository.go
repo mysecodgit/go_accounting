@@ -3,6 +3,7 @@ package user
 
 import (
 	"database/sql"
+	"fmt"
 )
 
 type UserRepository interface {
@@ -33,6 +34,11 @@ func (r *userRepo) GetByID(id int) (User, error) {
 	var user User
 	err := r.db.QueryRow("SELECT id, name, username, phone FROM users WHERE id = ?", id).
 		Scan(&user.ID, &user.Name, &user.Username, &user.Phone)
+	
+	if err == sql.ErrNoRows {
+		return user, fmt.Errorf("id does not exist")
+	}
+	
 	return user, err
 }
 
