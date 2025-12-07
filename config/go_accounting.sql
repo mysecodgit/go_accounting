@@ -112,6 +112,56 @@ INSERT INTO `units` (`id`, `name`, `building_id`, `created_at`, `updated_at`) VA
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `periods`
+--
+
+CREATE TABLE `periods` (
+  `id` int(11) NOT NULL,
+  `period_name` varchar(50) NOT NULL,
+  `start` date NOT NULL,
+  `end` date NOT NULL,
+  `building_id` int(11) NOT NULL,
+  `is_closed` int(2) NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `account_types`
+--
+
+CREATE TABLE `account_types` (
+  `id` int(11) NOT NULL,
+  `typeName` varchar(250) NOT NULL,
+  `type` varchar(20) NOT NULL,
+  `sub_type` varchar(20) NOT NULL,
+  `typeStatus` varchar(10) NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `accounts`
+--
+
+CREATE TABLE `accounts` (
+  `id` int(11) NOT NULL,
+  `account_number` int(11) NOT NULL,
+  `account_name` varchar(50) NOT NULL,
+  `account_type` int(11) NOT NULL,
+  `building_id` int(11) NOT NULL,
+  `isDefault` tinyint(1) NOT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `users`
 --
 
@@ -157,6 +207,30 @@ ALTER TABLE `units`
   ADD KEY `unit_building_id_fk` (`building_id`);
 
 --
+-- Indexes for table `periods`
+--
+ALTER TABLE `periods`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `period_building_id` (`building_id`),
+  ADD UNIQUE KEY `unique_building_period` (`building_id`, `start`, `end`);
+
+--
+-- Indexes for table `account_types`
+--
+ALTER TABLE `account_types`
+  ADD PRIMARY KEY (`id`);
+
+--
+-- Indexes for table `accounts`
+--
+ALTER TABLE `accounts`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `acc_acc_type_fk` (`account_type`),
+  ADD KEY `accounts_building_fk` (`building_id`),
+  ADD UNIQUE KEY `unique_building_account_number` (`building_id`, `account_number`),
+  ADD UNIQUE KEY `unique_building_account_name` (`building_id`, `account_name`);
+
+--
 -- Indexes for table `users`
 --
 ALTER TABLE `users`
@@ -191,6 +265,24 @@ ALTER TABLE `units`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
+-- AUTO_INCREMENT for table `periods`
+--
+ALTER TABLE `periods`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `account_types`
+--
+ALTER TABLE `account_types`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `accounts`
+--
+ALTER TABLE `accounts`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT for table `users`
 --
 ALTER TABLE `users`
@@ -218,6 +310,19 @@ ALTER TABLE `people_types`
 --
 ALTER TABLE `units`
   ADD CONSTRAINT `unit_building_id_fk` FOREIGN KEY (`building_id`) REFERENCES `buildings` (`id`);
+
+--
+-- Constraints for table `periods`
+--
+ALTER TABLE `periods`
+  ADD CONSTRAINT `period_building_id_fk` FOREIGN KEY (`building_id`) REFERENCES `buildings` (`id`);
+
+--
+-- Constraints for table `accounts`
+--
+ALTER TABLE `accounts`
+  ADD CONSTRAINT `acc_acc_type_fk` FOREIGN KEY (`account_type`) REFERENCES `account_types` (`id`),
+  ADD CONSTRAINT `accounts_building_fk` FOREIGN KEY (`building_id`) REFERENCES `buildings` (`id`);
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;

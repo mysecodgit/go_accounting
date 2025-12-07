@@ -4,9 +4,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/mysecodgit/go_accounting/config"
 	_ "github.com/mysecodgit/go_accounting/handlers"
+	"github.com/mysecodgit/go_accounting/src/account_types"
+	"github.com/mysecodgit/go_accounting/src/accounts"
 	"github.com/mysecodgit/go_accounting/src/building"
 	"github.com/mysecodgit/go_accounting/src/people"
 	"github.com/mysecodgit/go_accounting/src/people_types"
+	"github.com/mysecodgit/go_accounting/src/period"
 	"github.com/mysecodgit/go_accounting/src/unit"
 	"github.com/mysecodgit/go_accounting/src/user"
 )
@@ -72,5 +75,41 @@ func SetupRoutes(r *gin.Engine) {
 		peopleRoutes.GET("/:id", personHandler.GetPerson)
 		peopleRoutes.POST("", personHandler.CreatePerson)
 		peopleRoutes.PUT("/:id", personHandler.UpdatePerson)
+	}
+
+	periodRepo := period.NewPeriodRepository(config.DB)
+	periodService := period.NewPeriodService(periodRepo)
+	periodHandler := period.NewPeriodHandler(periodService)
+
+	periodRoutes := r.Group("/api/periods")
+	{
+		periodRoutes.GET("", periodHandler.GetPeriods)
+		periodRoutes.GET("/:id", periodHandler.GetPeriod)
+		periodRoutes.POST("", periodHandler.CreatePeriod)
+		periodRoutes.PUT("/:id", periodHandler.UpdatePeriod)
+	}
+
+	accountTypeRepo := account_types.NewAccountTypeRepository(config.DB)
+	accountTypeService := account_types.NewAccountTypeService(accountTypeRepo)
+	accountTypeHandler := account_types.NewAccountTypeHandler(accountTypeService)
+
+	accountTypeRoutes := r.Group("/api/account-types")
+	{
+		accountTypeRoutes.GET("", accountTypeHandler.GetAccountTypes)
+		accountTypeRoutes.GET("/:id", accountTypeHandler.GetAccountType)
+		accountTypeRoutes.POST("", accountTypeHandler.CreateAccountType)
+		accountTypeRoutes.PUT("/:id", accountTypeHandler.UpdateAccountType)
+	}
+
+	accountRepo := accounts.NewAccountRepository(config.DB)
+	accountService := accounts.NewAccountService(accountRepo)
+	accountHandler := accounts.NewAccountHandler(accountService)
+
+	accountRoutes := r.Group("/api/accounts")
+	{
+		accountRoutes.GET("", accountHandler.GetAccounts)
+		accountRoutes.GET("/:id", accountHandler.GetAccount)
+		accountRoutes.POST("", accountHandler.CreateAccount)
+		accountRoutes.PUT("/:id", accountHandler.UpdateAccount)
 	}
 }
