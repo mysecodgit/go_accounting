@@ -1,0 +1,43 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go build output
+/bin/
+build/
+dist/
+
+# Go modules cache (DO NOT ignore go.mod or go.sum!)
+/vendor/
+/pkg/mod/
+
+# Logs
+*.log
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Environment files (secrets)
+.env
+.env.*
+*.env
+
+# IDE/editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Coverage files
+coverage.out
+*.cov
+
+# Temporary files
+*.tmp
+*.cache
