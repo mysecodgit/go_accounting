@@ -16,14 +16,14 @@ func (s *PeopleTypeService) CreatePeopleType(peopleType PeopleType) (*PeopleType
 		return nil, errs, nil // validation errors
 	}
 
-	// Check if title already exists in this building
-	exists, err := s.repo.TitleExistsInBuilding(peopleType.Title, peopleType.BuildingID)
+	// Check if title already exists globally
+	exists, err := s.repo.TitleExists(peopleType.Title)
 	if err != nil {
 		return nil, nil, err // internal/server error
 	}
 	if exists {
 		errors := make(map[string]string)
-		errors["title"] = fmt.Sprintf("this title exists in this building")
+		errors["title"] = fmt.Sprintf("this title already exists")
 		return nil, errors, nil
 	}
 
@@ -37,14 +37,17 @@ func (s *PeopleTypeService) CreatePeopleType(peopleType PeopleType) (*PeopleType
 }
 
 func (s *PeopleTypeService) GetAllPeopleTypes() ([]PeopleTypeResponse, error) {
-	peopleTypes, buildings, err := s.repo.GetAll()
+	peopleTypes, err := s.repo.GetAll()
 	if err != nil {
 		return nil, err
 	}
 
 	responses := []PeopleTypeResponse{}
-	for i, peopleType := range peopleTypes {
-		response := peopleType.ToPeopleTypeResponse(buildings[i])
+	for _, peopleType := range peopleTypes {
+		response := PeopleTypeResponse{
+			ID:    peopleType.ID,
+			Title: peopleType.Title,
+		}
 		responses = append(responses, response)
 	}
 
@@ -52,12 +55,15 @@ func (s *PeopleTypeService) GetAllPeopleTypes() ([]PeopleTypeResponse, error) {
 }
 
 func (s *PeopleTypeService) GetPeopleTypeByID(id int) (*PeopleTypeResponse, error) {
-	peopleType, building, err := s.repo.GetByID(id)
+	peopleType, err := s.repo.GetByID(id)
 	if err != nil {
 		return nil, err
 	}
 
-	response := peopleType.ToPeopleTypeResponse(building)
+	response := PeopleTypeResponse{
+		ID:    peopleType.ID,
+		Title: peopleType.Title,
+	}
 	return &response, nil
 }
 
@@ -67,20 +73,14 @@ func (s *PeopleTypeService) UpdatePeopleType(id int, updateReq UpdatePeopleTypeR
 		return nil, errs, nil // validation errors
 	}
 
-	// Get existing people_type to check building_id for duplicate title check
-	existingPeopleType, _, err := s.repo.GetByID(id)
-	if err != nil {
-		return nil, nil, err // internal/server error
-	}
-
-	// Check if title already exists in this building (excluding current record)
-	exists, err := s.repo.TitleExistsInBuildingExcludingID(updateReq.Title, existingPeopleType.BuildingID, id)
+	// Check if title already exists globally (excluding current record)
+	exists, err := s.repo.TitleExistsExcludingID(updateReq.Title, id)
 	if err != nil {
 		return nil, nil, err // internal/server error
 	}
 	if exists {
 		errors := make(map[string]string)
-		errors["title"] = "this title exists in this building"
+		errors["title"] = "this title already exists"
 		return nil, errors, nil
 	}
 

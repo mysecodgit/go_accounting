@@ -55,9 +55,32 @@ func (h *AccountHandler) GetAccounts(c *gin.Context) {
 	c.JSON(http.StatusOK, accounts)
 }
 
-// GET /accounts/:id
+// GET /buildings/:id/accounts
+func (h *AccountHandler) GetAccountsByBuilding(c *gin.Context) {
+	buildingIDStr := c.Param("id")
+	buildingID, err := strconv.Atoi(buildingIDStr)
+
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Building ID"})
+		return
+	}
+
+	accounts, err := h.service.GetAccountsByBuildingID(buildingID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, accounts)
+}
+
+// GET /accounts/:id or /buildings/:id/accounts/:accountId
 func (h *AccountHandler) GetAccount(c *gin.Context) {
-	stringId := c.Param("id")
+	// Check for accountId first (building-scoped route), then fall back to id
+	stringId := c.Param("accountId")
+	if stringId == "" {
+		stringId = c.Param("id")
+	}
 	id, err := strconv.Atoi(stringId)
 
 	if err != nil {
@@ -78,9 +101,13 @@ func (h *AccountHandler) GetAccount(c *gin.Context) {
 	c.JSON(http.StatusOK, account)
 }
 
-// PUT /accounts/:id
+// PUT /accounts/:id or /buildings/:id/accounts/:accountId
 func (h *AccountHandler) UpdateAccount(c *gin.Context) {
-	stringId := c.Param("id")
+	// Check for accountId first (building-scoped route), then fall back to id
+	stringId := c.Param("accountId")
+	if stringId == "" {
+		stringId = c.Param("id")
+	}
 	id, err := strconv.Atoi(stringId)
 
 	if err != nil {

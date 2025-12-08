@@ -13,6 +13,7 @@ type PeriodRepository interface {
 	Update(period Period, id int) (Period, error)
 	GetByID(id int) (Period, building.Building, error)
 	GetAll() ([]Period, []building.Building, error)
+	GetByBuildingID(buildingID int) ([]Period, []building.Building, error)
 	BuildingIDExists(buildingID int) (bool, error)
 	CheckDuplicatePeriod(buildingID int, start string, end string, excludeID int) (bool, error)
 }
@@ -110,6 +111,34 @@ func (r *periodRepo) GetAll() ([]Period, []building.Building, error) {
 		"FROM periods p " +
 		"INNER JOIN buildings b ON p.building_id = b.id " +
 		"ORDER BY p.created_at DESC")
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+
+	periods := []Period{}
+	buildings := []building.Building{}
+	for rows.Next() {
+		var p Period
+		var b building.Building
+		err := rows.Scan(&p.ID, &p.PeriodName, &p.Start, &p.End, &p.BuildingID, &p.IsClosed, &p.CreatedAt, &p.UpdatedAt,
+			&b.ID, &b.Name, &b.CreatedAt, &b.UpdatedAt)
+		if err != nil {
+			return nil, nil, err
+		}
+		periods = append(periods, p)
+		buildings = append(buildings, b)
+	}
+	return periods, buildings, nil
+}
+
+func (r *periodRepo) GetByBuildingID(buildingID int) ([]Period, []building.Building, error) {
+	rows, err := r.db.Query("SELECT p.id, p.period_name, p.`start`, p.`end`, p.building_id, p.is_closed, p.created_at, p.updated_at, "+
+		"b.id, b.name, b.created_at, b.updated_at "+
+		"FROM periods p "+
+		"INNER JOIN buildings b ON p.building_id = b.id "+
+		"WHERE p.building_id = ? "+
+		"ORDER BY p.created_at DESC", buildingID)
 	if err != nil {
 		return nil, nil, err
 	}

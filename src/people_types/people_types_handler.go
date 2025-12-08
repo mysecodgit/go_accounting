@@ -49,9 +49,13 @@ func (h *PeopleTypeHandler) GetPeopleTypes(c *gin.Context) {
 	c.JSON(http.StatusOK, peopleTypes)
 }
 
-// GET /people-types/:id
+// GET /people-types/:id or /buildings/:id/people-types/:peopleTypeId
 func (h *PeopleTypeHandler) GetPeopleType(c *gin.Context) {
-	stringId := c.Param("id")
+	// Check for peopleTypeId first (building-scoped route), then fall back to id
+	stringId := c.Param("peopleTypeId")
+	if stringId == "" {
+		stringId = c.Param("id")
+	}
 	id, err := strconv.Atoi(stringId)
 
 	if err != nil {
@@ -68,9 +72,13 @@ func (h *PeopleTypeHandler) GetPeopleType(c *gin.Context) {
 	c.JSON(http.StatusOK, peopleType)
 }
 
-// PUT /people-types/:id
+// PUT /people-types/:id or /buildings/:id/people-types/:peopleTypeId
 func (h *PeopleTypeHandler) UpdatePeopleType(c *gin.Context) {
-	stringId := c.Param("id")
+	// Check for peopleTypeId first (building-scoped route), then fall back to id
+	stringId := c.Param("peopleTypeId")
+	if stringId == "" {
+		stringId = c.Param("id")
+	}
 	id, err := strconv.Atoi(stringId)
 
 	if err != nil {

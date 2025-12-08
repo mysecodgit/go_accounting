@@ -47,6 +47,21 @@ func (s *PeriodService) GetAllPeriods() ([]PeriodResponse, error) {
 	return responses, nil
 }
 
+func (s *PeriodService) GetPeriodsByBuildingID(buildingID int) ([]PeriodResponse, error) {
+	periods, buildings, err := s.repo.GetByBuildingID(buildingID)
+	if err != nil {
+		return nil, err
+	}
+
+	responses := []PeriodResponse{}
+	for i, period := range periods {
+		response := period.ToPeriodResponse(buildings[i])
+		responses = append(responses, response)
+	}
+
+	return responses, nil
+}
+
 func (s *PeriodService) GetPeriodByID(id int) (*PeriodResponse, error) {
 	period, building, err := s.repo.GetByID(id)
 	if err != nil {

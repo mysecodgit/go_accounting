@@ -49,9 +49,32 @@ func (h *PersonHandler) GetPeople(c *gin.Context) {
 	c.JSON(http.StatusOK, people)
 }
 
-// GET /people/:id
+// GET /buildings/:id/people
+func (h *PersonHandler) GetPeopleByBuilding(c *gin.Context) {
+	buildingIDStr := c.Param("id")
+	buildingID, err := strconv.Atoi(buildingIDStr)
+
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Building ID"})
+		return
+	}
+
+	people, err := h.service.GetPeopleByBuildingID(buildingID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, people)
+}
+
+// GET /people/:id or /buildings/:id/people/:personId
 func (h *PersonHandler) GetPerson(c *gin.Context) {
-	stringId := c.Param("id")
+	// Check for personId first (building-scoped route), then fall back to id
+	stringId := c.Param("personId")
+	if stringId == "" {
+		stringId = c.Param("id")
+	}
 	id, err := strconv.Atoi(stringId)
 
 	if err != nil {
@@ -68,9 +91,13 @@ func (h *PersonHandler) GetPerson(c *gin.Context) {
 	c.JSON(http.StatusOK, person)
 }
 
-// PUT /people/:id
+// PUT /people/:id or /buildings/:id/people/:personId
 func (h *PersonHandler) UpdatePerson(c *gin.Context) {
-	stringId := c.Param("id")
+	// Check for personId first (building-scoped route), then fall back to id
+	stringId := c.Param("personId")
+	if stringId == "" {
+		stringId = c.Param("id")
+	}
 	id, err := strconv.Atoi(stringId)
 
 	if err != nil {

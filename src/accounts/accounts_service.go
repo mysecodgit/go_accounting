@@ -56,6 +56,21 @@ func (s *AccountService) GetAllAccounts() ([]AccountResponse, error) {
 	return responses, nil
 }
 
+func (s *AccountService) GetAccountsByBuildingID(buildingID int) ([]AccountResponse, error) {
+	accounts, accountTypes, buildings, err := s.repo.GetByBuildingID(buildingID)
+	if err != nil {
+		return nil, err
+	}
+
+	responses := []AccountResponse{}
+	for i, account := range accounts {
+		response := account.ToAccountResponse(accountTypes[i], buildings[i])
+		responses = append(responses, response)
+	}
+
+	return responses, nil
+}
+
 func (s *AccountService) GetAccountByID(id int) (*AccountResponse, error) {
 	account, accountType, building, err := s.repo.GetByID(id)
 	if err != nil {

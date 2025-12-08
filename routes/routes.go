@@ -39,8 +39,46 @@ func SetupRoutes(r *gin.Engine) {
 		buildingRoutes.GET("/:id", buildingHandler.GetBuilding)
 		buildingRoutes.POST("", buildingHandler.CreateBuilding)
 		buildingRoutes.PUT("/:id", buildingHandler.UpdateBuilding)
+
+		// Building-scoped routes
+		unitRepo := unit.NewUnitRepository(config.DB)
+		unitService := unit.NewUnitService(unitRepo)
+		unitHandler := unit.NewUnitHandler(unitService)
+
+		buildingRoutes.GET("/:id/units", unitHandler.GetUnitsByBuilding)
+		buildingRoutes.POST("/:id/units", unitHandler.CreateUnit)
+		buildingRoutes.GET("/:id/units/:unitId", unitHandler.GetUnit)
+		buildingRoutes.PUT("/:id/units/:unitId", unitHandler.UpdateUnit)
+
+		personRepo := people.NewPersonRepository(config.DB)
+		personService := people.NewPersonService(personRepo)
+		personHandler := people.NewPersonHandler(personService)
+
+		buildingRoutes.GET("/:id/people", personHandler.GetPeopleByBuilding)
+		buildingRoutes.POST("/:id/people", personHandler.CreatePerson)
+		buildingRoutes.GET("/:id/people/:personId", personHandler.GetPerson)
+		buildingRoutes.PUT("/:id/people/:personId", personHandler.UpdatePerson)
+
+		periodRepo := period.NewPeriodRepository(config.DB)
+		periodService := period.NewPeriodService(periodRepo)
+		periodHandler := period.NewPeriodHandler(periodService)
+
+		buildingRoutes.GET("/:id/periods", periodHandler.GetPeriodsByBuilding)
+		buildingRoutes.POST("/:id/periods", periodHandler.CreatePeriod)
+		buildingRoutes.GET("/:id/periods/:periodId", periodHandler.GetPeriod)
+		buildingRoutes.PUT("/:id/periods/:periodId", periodHandler.UpdatePeriod)
+
+		accountRepo := accounts.NewAccountRepository(config.DB)
+		accountService := accounts.NewAccountService(accountRepo)
+		accountHandler := accounts.NewAccountHandler(accountService)
+
+		buildingRoutes.GET("/:id/accounts", accountHandler.GetAccountsByBuilding)
+		buildingRoutes.POST("/:id/accounts", accountHandler.CreateAccount)
+		buildingRoutes.GET("/:id/accounts/:accountId", accountHandler.GetAccount)
+		buildingRoutes.PUT("/:id/accounts/:accountId", accountHandler.UpdateAccount)
 	}
 
+	// Legacy routes (keeping for backward compatibility)
 	unitRepo := unit.NewUnitRepository(config.DB)
 	unitService := unit.NewUnitService(unitRepo)
 	unitHandler := unit.NewUnitHandler(unitService)
@@ -53,6 +91,7 @@ func SetupRoutes(r *gin.Engine) {
 		unitRoutes.PUT("/:id", unitHandler.UpdateUnit)
 	}
 
+	// Legacy routes (keeping for backward compatibility)
 	peopleTypeRepo := people_types.NewPeopleTypeRepository(config.DB)
 	peopleTypeService := people_types.NewPeopleTypeService(peopleTypeRepo)
 	peopleTypeHandler := people_types.NewPeopleTypeHandler(peopleTypeService)
@@ -101,6 +140,7 @@ func SetupRoutes(r *gin.Engine) {
 		accountTypeRoutes.PUT("/:id", accountTypeHandler.UpdateAccountType)
 	}
 
+	// Legacy routes (keeping for backward compatibility)
 	accountRepo := accounts.NewAccountRepository(config.DB)
 	accountService := accounts.NewAccountService(accountRepo)
 	accountHandler := accounts.NewAccountHandler(accountService)

@@ -49,9 +49,32 @@ func (h *UnitHandler) GetUnits(c *gin.Context) {
 	c.JSON(http.StatusOK, units)
 }
 
-// GET /units/:id
+// GET /buildings/:id/units
+func (h *UnitHandler) GetUnitsByBuilding(c *gin.Context) {
+	buildingIDStr := c.Param("id")
+	buildingID, err := strconv.Atoi(buildingIDStr)
+
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Building ID"})
+		return
+	}
+
+	units, err := h.service.GetUnitsByBuildingID(buildingID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, units)
+}
+
+// GET /units/:id or /buildings/:id/units/:unitId
 func (h *UnitHandler) GetUnit(c *gin.Context) {
-	stringId := c.Param("id")
+	// Check for unitId first (building-scoped route), then fall back to id
+	stringId := c.Param("unitId")
+	if stringId == "" {
+		stringId = c.Param("id")
+	}
 	id, err := strconv.Atoi(stringId)
 
 	if err != nil {
@@ -68,9 +91,13 @@ func (h *UnitHandler) GetUnit(c *gin.Context) {
 	c.JSON(http.StatusOK, unit)
 }
 
-// PUT /units/:id
+// PUT /units/:id or /buildings/:id/units/:unitId
 func (h *UnitHandler) UpdateUnit(c *gin.Context) {
-	stringId := c.Param("id")
+	// Check for unitId first (building-scoped route), then fall back to id
+	stringId := c.Param("unitId")
+	if stringId == "" {
+		stringId = c.Param("id")
+	}
 	id, err := strconv.Atoi(stringId)
 
 	if err != nil {

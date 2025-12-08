@@ -1,22 +1,10 @@
 package people_types
 
-import (
-	"strings"
-	"github.com/mysecodgit/go_accounting/src/building"
-)
+import "strings"
 
 type PeopleTypeResponse struct {
-	ID       int               `json:"id"`
-	Title    string            `json:"title"`
-	Building building.Building `json:"building"`
-}
-
-func (p *PeopleType) ToPeopleTypeResponse(b building.Building) PeopleTypeResponse {
-	return PeopleTypeResponse{
-		ID:       p.ID,
-		Title:    p.Title,
-		Building: b,
-	}
+	ID    int    `json:"id"`
+	Title string `json:"title"`
 }
 
 type UpdatePeopleTypeRequest struct {

@@ -29,8 +29,9 @@ func (p *Person) ToPersonResponse(pt people_types.PeopleType, b building.Buildin
 }
 
 type UpdatePersonRequest struct {
-	Name  string `json:"name"`
-	Phone string `json:"phone"`
+	Name   string `json:"name"`
+	Phone  string `json:"phone"`
+	TypeID int    `json:"type_id"`
 }
 
 func (u *UpdatePersonRequest) Validate() map[string]string {
@@ -42,6 +43,10 @@ func (u *UpdatePersonRequest) Validate() map[string]string {
 
 	if strings.TrimSpace(u.Phone) == "" {
 		errors["phone"] = "Phone cannot be empty"
+	}
+
+	if u.TypeID <= 0 {
+		errors["type_id"] = "Type ID must be greater than 0"
 	}
 
 	if len(errors) == 0 {

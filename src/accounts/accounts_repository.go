@@ -14,6 +14,7 @@ type AccountRepository interface {
 	Update(account Account, id int) (Account, error)
 	GetByID(id int) (Account, account_types.AccountType, building.Building, error)
 	GetAll() ([]Account, []account_types.AccountType, []building.Building, error)
+	GetByBuildingID(buildingID int) ([]Account, []account_types.AccountType, []building.Building, error)
 	AccountTypeIDExists(accountTypeID int) (bool, error)
 	BuildingIDExists(buildingID int) (bool, error)
 	CheckDuplicateAccountNumber(buildingID int, accountNumber int, excludeID int) (bool, error)
@@ -137,6 +138,40 @@ func (r *accountRepo) GetAll() ([]Account, []account_types.AccountType, []buildi
 		"INNER JOIN account_types at ON a.account_type = at.id " +
 		"INNER JOIN buildings b ON a.building_id = b.id " +
 		"ORDER BY a.created_at DESC")
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	defer rows.Close()
+
+	accounts := []Account{}
+	accountTypes := []account_types.AccountType{}
+	buildings := []building.Building{}
+	for rows.Next() {
+		var a Account
+		var at account_types.AccountType
+		var b building.Building
+		err := rows.Scan(&a.ID, &a.AccountNumber, &a.AccountName, &a.AccountType, &a.BuildingID, &a.IsDefault, &a.CreatedAt, &a.UpdatedAt,
+			&at.ID, &at.TypeName, &at.Type, &at.SubType, &at.TypeStatus, &at.CreatedAt, &at.UpdatedAt,
+			&b.ID, &b.Name, &b.CreatedAt, &b.UpdatedAt)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		accounts = append(accounts, a)
+		accountTypes = append(accountTypes, at)
+		buildings = append(buildings, b)
+	}
+	return accounts, accountTypes, buildings, nil
+}
+
+func (r *accountRepo) GetByBuildingID(buildingID int) ([]Account, []account_types.AccountType, []building.Building, error) {
+	rows, err := r.db.Query("SELECT a.id, a.account_number, a.account_name, a.account_type, a.building_id, a.isDefault, a.created_at, a.updated_at, "+
+		"at.id, at.typeName, at.`type`, at.sub_type, at.typeStatus, at.created_at, at.updated_at, "+
+		"b.id, b.name, b.created_at, b.updated_at "+
+		"FROM accounts a "+
+		"INNER JOIN account_types at ON a.account_type = at.id "+
+		"INNER JOIN buildings b ON a.building_id = b.id "+
+		"WHERE a.building_id = ? "+
+		"ORDER BY a.created_at DESC", buildingID)
 	if err != nil {
 		return nil, nil, nil, err
 	}
