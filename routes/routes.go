@@ -7,9 +7,14 @@ import (
 	"github.com/mysecodgit/go_accounting/src/account_types"
 	"github.com/mysecodgit/go_accounting/src/accounts"
 	"github.com/mysecodgit/go_accounting/src/building"
+	"github.com/mysecodgit/go_accounting/src/invoice_items"
+	"github.com/mysecodgit/go_accounting/src/invoices"
+	"github.com/mysecodgit/go_accounting/src/items"
 	"github.com/mysecodgit/go_accounting/src/people"
 	"github.com/mysecodgit/go_accounting/src/people_types"
 	"github.com/mysecodgit/go_accounting/src/period"
+	"github.com/mysecodgit/go_accounting/src/splits"
+	"github.com/mysecodgit/go_accounting/src/transactions"
 	"github.com/mysecodgit/go_accounting/src/unit"
 	"github.com/mysecodgit/go_accounting/src/user"
 )
@@ -32,6 +37,16 @@ func SetupRoutes(r *gin.Engine) {
 	buildingRepo := building.NewBuildingRepository(config.DB)
 	buildingService := building.NewBuildingService(buildingRepo)
 	buildingHandler := building.NewBuildingHandler(buildingService)
+
+	// Initialize invoice dependencies (used in both building-scoped and legacy routes)
+	transactionRepo := transactions.NewTransactionRepository(config.DB)
+	splitRepo := splits.NewSplitRepository(config.DB)
+	invoiceItemRepo := invoice_items.NewInvoiceItemRepository(config.DB)
+	itemRepoForInvoice := items.NewItemRepository(config.DB)
+	accountRepoForInvoice := accounts.NewAccountRepository(config.DB)
+	invoiceRepo := invoices.NewInvoiceRepository(config.DB)
+	invoiceService := invoices.NewInvoiceService(invoiceRepo, transactionRepo, splitRepo, invoiceItemRepo, itemRepoForInvoice, accountRepoForInvoice, config.DB)
+	invoiceHandler := invoices.NewInvoiceHandler(invoiceService)
 
 	buildingRoutes := r.Group("/api/buildings")
 	{
@@ -76,6 +91,21 @@ func SetupRoutes(r *gin.Engine) {
 		buildingRoutes.POST("/:id/accounts", accountHandler.CreateAccount)
 		buildingRoutes.GET("/:id/accounts/:accountId", accountHandler.GetAccount)
 		buildingRoutes.PUT("/:id/accounts/:accountId", accountHandler.UpdateAccount)
+
+		itemRepo := items.NewItemRepository(config.DB)
+		itemService := items.NewItemService(itemRepo)
+		itemHandler := items.NewItemHandler(itemService)
+
+		buildingRoutes.GET("/:id/items", itemHandler.GetItemsByBuilding)
+		buildingRoutes.POST("/:id/items", itemHandler.CreateItem)
+		buildingRoutes.GET("/:id/items/:itemId", itemHandler.GetItem)
+		buildingRoutes.PUT("/:id/items/:itemId", itemHandler.UpdateItem)
+
+		// Invoice routes (building-scoped)
+		buildingRoutes.POST("/:id/invoices/preview", invoiceHandler.PreviewInvoice)
+		buildingRoutes.POST("/:id/invoices", invoiceHandler.CreateInvoice)
+		buildingRoutes.GET("/:id/invoices", invoiceHandler.GetInvoices)
+		buildingRoutes.GET("/:id/invoices/:invoiceId", invoiceHandler.GetInvoice)
 	}
 
 	// Legacy routes (keeping for backward compatibility)
@@ -151,5 +181,26 @@ func SetupRoutes(r *gin.Engine) {
 		accountRoutes.GET("/:id", accountHandler.GetAccount)
 		accountRoutes.POST("", accountHandler.CreateAccount)
 		accountRoutes.PUT("/:id", accountHandler.UpdateAccount)
+	}
+
+	// Legacy routes (keeping for backward compatibility)
+	itemRepo := items.NewItemRepository(config.DB)
+	itemService := items.NewItemService(itemRepo)
+	itemHandler := items.NewItemHandler(itemService)
+
+	itemRoutes := r.Group("/api/items")
+	{
+		itemRoutes.GET("", itemHandler.GetItems)
+		itemRoutes.GET("/:id", itemHandler.GetItem)
+		itemRoutes.POST("", itemHandler.CreateItem)
+		itemRoutes.PUT("/:id", itemHandler.UpdateItem)
+	}
+
+	// Invoice routes (legacy)
+	invoiceRoutes := r.Group("/api/invoices")
+	{
+		invoiceRoutes.POST("/preview", invoiceHandler.PreviewInvoice)
+		invoiceRoutes.POST("", invoiceHandler.CreateInvoice)
+		invoiceRoutes.GET("/:id", invoiceHandler.GetInvoice)
 	}
 }
