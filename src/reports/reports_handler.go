@@ -3,7 +3,6 @@ package reports
 import (
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -127,10 +126,17 @@ func (h *ReportsHandler) GetVendorReport(c *gin.Context) {
 		}
 	}
 
+	// If type_id is not provided, automatically find vendor type
 	if typeIDStr := c.Query("type_id"); typeIDStr != "" {
 		typeID, err := strconv.Atoi(typeIDStr)
 		if err == nil {
 			req.TypeID = &typeID
+		}
+	} else {
+		// Automatically find vendor type by searching for "vendor" (case-insensitive)
+		vendorTypeID, err := h.service.FindPeopleTypeByTitle("vendor")
+		if err == nil && vendorTypeID > 0 {
+			req.TypeID = &vendorTypeID
 		}
 	}
 
@@ -156,9 +162,9 @@ func (h *ReportsHandler) GetVendorReport(c *gin.Context) {
 	c.JSON(http.StatusOK, report)
 }
 
-// GET /reports/transaction-details
-func (h *ReportsHandler) GetTransactionDetails(c *gin.Context) {
-	var req TransactionDetailsRequest
+// GET /reports/trial-balance
+func (h *ReportsHandler) GetTrialBalance(c *gin.Context) {
+	var req TrialBalanceRequest
 
 	// Get building ID from route parameter (for building-scoped routes)
 	buildingIDStr := c.Param("id")
@@ -173,34 +179,15 @@ func (h *ReportsHandler) GetTransactionDetails(c *gin.Context) {
 		}
 	}
 
-	// Parse account IDs from query (comma-separated)
-	if accountIDsStr := c.Query("account_ids"); accountIDsStr != "" {
-		accountIDStrs := strings.Split(accountIDsStr, ",")
-		for _, idStr := range accountIDStrs {
-			if id, err := strconv.Atoi(strings.TrimSpace(idStr)); err == nil {
-				req.AccountIDs = append(req.AccountIDs, id)
-			}
-		}
-	}
-
-	if transactionType := c.Query("transaction_type"); transactionType != "" {
-		req.TransactionType = &transactionType
-	}
-
-	req.StartDate = c.Query("start_date")
-	req.EndDate = c.Query("end_date")
+	// Get as_of_date from query
+	req.AsOfDate = c.Query("as_of_date")
 
 	if req.BuildingID <= 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Building ID is required"})
 		return
 	}
 
-	if req.StartDate == "" || req.EndDate == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Start date and end date are required"})
-		return
-	}
-
-	report, err := h.service.GetTransactionDetailsByAccount(req)
+	report, err := h.service.GetTrialBalance(req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

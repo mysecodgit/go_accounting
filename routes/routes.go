@@ -67,7 +67,8 @@ func SetupRoutes(r *gin.Engine) {
 
 	// Initialize reports dependencies
 	peopleRepo := people.NewPersonRepository(config.DB)
-	reportsService := reports.NewReportsService(accountRepoForInvoice, splitRepo, transactionRepo, invoiceRepo, paymentRepo, peopleRepo, config.DB)
+	peopleTypeRepoForReports := people_types.NewPeopleTypeRepository(config.DB)
+	reportsService := reports.NewReportsService(accountRepoForInvoice, splitRepo, transactionRepo, invoiceRepo, paymentRepo, peopleRepo, peopleTypeRepoForReports, config.DB)
 	reportsHandler := reports.NewReportsHandler(reportsService)
 
 	buildingRoutes := r.Group("/api/buildings")
@@ -138,9 +139,9 @@ func SetupRoutes(r *gin.Engine) {
 
 		// Reports routes (building-scoped)
 		buildingRoutes.GET("/:id/reports/balance-sheet", reportsHandler.GetBalanceSheet)
+		buildingRoutes.GET("/:id/reports/trial-balance", reportsHandler.GetTrialBalance)
 		buildingRoutes.GET("/:id/reports/customers", reportsHandler.GetCustomerReport)
 		buildingRoutes.GET("/:id/reports/vendors", reportsHandler.GetVendorReport)
-		buildingRoutes.GET("/:id/reports/transaction-details", reportsHandler.GetTransactionDetails)
 
 		// Sales Receipt routes (building-scoped)
 		buildingRoutes.POST("/:id/sales-receipts/preview", receiptHandler.PreviewSalesReceipt)
