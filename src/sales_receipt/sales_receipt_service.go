@@ -1,4 +1,4 @@
-package invoices
+package sales_receipt
 
 import (
 	"database/sql"
@@ -6,55 +6,57 @@ import (
 	"math"
 
 	"github.com/mysecodgit/go_accounting/src/accounts"
-	"github.com/mysecodgit/go_accounting/src/invoice_items"
 	"github.com/mysecodgit/go_accounting/src/items"
+	"github.com/mysecodgit/go_accounting/src/receipt_items"
 	"github.com/mysecodgit/go_accounting/src/splits"
 	"github.com/mysecodgit/go_accounting/src/transactions"
 )
 
-type InvoiceService struct {
-	invoiceRepo     InvoiceRepository
+type SalesReceiptService struct {
+	receiptRepo     SalesReceiptRepository
 	transactionRepo transactions.TransactionRepository
 	splitRepo       splits.SplitRepository
-	invoiceItemRepo invoice_items.InvoiceItemRepository
+	receiptItemRepo receipt_items.ReceiptItemRepository
 	itemRepo        items.ItemRepository
 	accountRepo     accounts.AccountRepository
 	db              *sql.DB
 }
 
-// Expose invoiceRepo for handler access
-func (s *InvoiceService) GetInvoiceRepo() InvoiceRepository {
-	return s.invoiceRepo
+func (s *SalesReceiptService) GetReceiptRepo() SalesReceiptRepository {
+	return s.receiptRepo
 }
 
-func NewInvoiceService(
-	invoiceRepo InvoiceRepository,
+func NewSalesReceiptService(
+	receiptRepo SalesReceiptRepository,
 	transactionRepo transactions.TransactionRepository,
 	splitRepo splits.SplitRepository,
-	invoiceItemRepo invoice_items.InvoiceItemRepository,
+	receiptItemRepo receipt_items.ReceiptItemRepository,
 	itemRepo items.ItemRepository,
 	accountRepo accounts.AccountRepository,
 	db *sql.DB,
-) *InvoiceService {
-	return &InvoiceService{
-		invoiceRepo:     invoiceRepo,
+) *SalesReceiptService {
+	return &SalesReceiptService{
+		receiptRepo:     receiptRepo,
 		transactionRepo: transactionRepo,
 		splitRepo:       splitRepo,
-		invoiceItemRepo: invoiceItemRepo,
+		receiptItemRepo: receiptItemRepo,
 		itemRepo:        itemRepo,
 		accountRepo:     accountRepo,
 		db:              db,
 	}
 }
 
-// CalculateSplitsForInvoice calculates the double-entry accounting splits for an invoice
-func (s *InvoiceService) CalculateSplitsForInvoice(req CreateInvoiceRequest, userID int) ([]SplitPreview, error) {
+// CalculateSplitsForSalesReceipt calculates the double-entry accounting splits for a sales receipt
+// For sales receipt:
+// 1. Debit: Asset Account (cash/bank account where payment is received)
+// 2. Credit: Income/Revenue account (from item's income_account)
+func (s *SalesReceiptService) CalculateSplitsForSalesReceipt(req CreateSalesReceiptRequest, userID int) ([]SplitPreview, error) {
 	splits := []SplitPreview{}
 
 	// Get all items with their account information
 	itemMap := make(map[int]*items.Item)
-	itemIncomeAccounts := make(map[int]*accounts.Account) // Store income accounts by item ID
-	itemAssetAccounts := make(map[int]*accounts.Account)  // Store asset accounts by item ID
+	itemIncomeAccounts := make(map[int]*accounts.Account)
+	itemAssetAccounts := make(map[int]*accounts.Account)
 	for _, itemInput := range req.Items {
 		item, _, assetAccount, incomeAccount, _, _, err := s.itemRepo.GetByID(itemInput.ItemID)
 		if err != nil {
@@ -69,31 +71,10 @@ func (s *InvoiceService) CalculateSplitsForInvoice(req CreateInvoiceRequest, use
 		}
 	}
 
-	// For invoice (accounts receivable):
-	// 1. Debit: Accounts Receivable (or customer account if people_id has account)
-	// 2. Credit: Income/Revenue account (from item's income_account)
-
-	// Get accounts for the building
-	accountsList, _, _, err := s.accountRepo.GetByBuildingID(req.BuildingID)
+	// Get Asset Account from request (cash/bank account)
+	assetAccount, _, _, err := s.accountRepo.GetByID(req.AccountID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get accounts: %v", err)
-	}
-
-	// Get Accounts Receivable account from request
-	if req.ARAccountID == nil {
-		return nil, fmt.Errorf("A/R account is required")
-	}
-
-	var accountsReceivableAccount *accounts.Account
-	for i := range accountsList {
-		if accountsList[i].ID == *req.ARAccountID {
-			accountsReceivableAccount = &accountsList[i]
-			break
-		}
-	}
-
-	if accountsReceivableAccount == nil {
-		return nil, fmt.Errorf("A/R account not found")
+		return nil, fmt.Errorf("asset account not found: %v", err)
 	}
 
 	// Calculate totals by item type
@@ -115,19 +96,15 @@ func (s *InvoiceService) CalculateSplitsForInvoice(req CreateInvoiceRequest, use
 		// Parse rate from string input
 		if itemInput.Rate != nil && *itemInput.Rate != "" {
 			if _, err := fmt.Sscanf(*itemInput.Rate, "%f", &rate); err != nil {
-				// If parsing fails, use avg_cost as fallback
 				rate = item.AvgCost
 			}
 		} else {
-			// If no rate provided, use avg_cost
 			rate = item.AvgCost
 		}
 
-		// Calculate total: qty * rate
-		// For discount/payment items, qty should be 1 (enforced by frontend, but ensure here too)
+		// For discount/payment items, use absolute value of rate (qty is implicitly 1)
 		if item.Type == "discount" || item.Type == "payment" {
-			// Force qty to 1 for discount/payment items
-			itemTotal = math.Abs(rate) // Use absolute value of rate, qty is implicitly 1
+			itemTotal = math.Abs(rate)
 		} else if itemInput.Qty != nil {
 			itemTotal = *itemInput.Qty * rate
 		} else {
@@ -136,22 +113,17 @@ func (s *InvoiceService) CalculateSplitsForInvoice(req CreateInvoiceRequest, use
 
 		// Categorize by item type
 		if item.Type == "discount" {
-			// Use absolute value for discount (even if rate is negative)
-			discountTotal += itemTotal // itemTotal is already absolute value
-			// Get discount income account from fetched accounts
+			discountTotal += itemTotal
 			if incomeAccount, exists := itemIncomeAccounts[itemInput.ItemID]; exists && incomeAccount != nil {
 				discountIncomeAccount = incomeAccount
 			}
 		} else if item.Type == "payment" {
-			// Use absolute value for payment (even if rate is negative)
-			paymentTotal += itemTotal // itemTotal is already absolute value
-			// Get payment asset account from fetched accounts
-			if assetAccount, exists := itemAssetAccounts[itemInput.ItemID]; exists && assetAccount != nil {
-				paymentAssetAccount = assetAccount
+			paymentTotal += itemTotal
+			if assetAccountItem, exists := itemAssetAccounts[itemInput.ItemID]; exists && assetAccountItem != nil {
+				paymentAssetAccount = assetAccountItem
 			}
 		} else if item.Type == "service" {
 			serviceTotalAmount += itemTotal
-			// Group service income by account - handle negative rates as debits
 			if incomeAccount, exists := itemIncomeAccounts[itemInput.ItemID]; exists && incomeAccount != nil {
 				if itemTotal >= 0 {
 					// Positive rate: credit income account
@@ -161,37 +133,36 @@ func (s *InvoiceService) CalculateSplitsForInvoice(req CreateInvoiceRequest, use
 					serviceDebitByAccount[incomeAccount.ID] += math.Abs(itemTotal)
 				}
 			} else {
-				// Service items must have an income account for proper accounting
 				return nil, fmt.Errorf("service item '%s' (ID: %d) must have an income account configured", item.Name, item.ID)
 			}
 		}
 	}
 
-	// Calculate A/R amount = service total - discount - payment
-	arAmount := serviceTotalAmount - discountTotal - paymentTotal
+	// Calculate Asset Account amount = service total - discount - payment
+	assetAmount := serviceTotalAmount - discountTotal - paymentTotal
 
 	// Create splits
-	// 1. Debit or Credit: Accounts Receivable (depending on net amount)
-	if arAmount > 0 {
-		// Net positive: debit A/R
+	// 1. Debit or Credit: Asset Account (depending on net amount)
+	if assetAmount > 0 {
+		// Net positive: debit asset account
 		splits = append(splits, SplitPreview{
-			AccountID:   accountsReceivableAccount.ID,
-			AccountName: accountsReceivableAccount.AccountName,
+			AccountID:   assetAccount.ID,
+			AccountName: assetAccount.AccountName,
 			PeopleID:    req.PeopleID,
-			Debit:       &arAmount,
+			Debit:       &assetAmount,
 			Credit:      nil,
-			Status:      "1", // 1 = active, 0 = inactive/deleted
+			Status:      "1",
 		})
-	} else if arAmount < 0 {
-		// Net negative: credit A/R (refund/reversal)
-		arCreditAmount := math.Abs(arAmount)
+	} else if assetAmount < 0 {
+		// Net negative: credit asset account (refund/reversal)
+		assetCreditAmount := math.Abs(assetAmount)
 		splits = append(splits, SplitPreview{
-			AccountID:   accountsReceivableAccount.ID,
-			AccountName: accountsReceivableAccount.AccountName,
+			AccountID:   assetAccount.ID,
+			AccountName: assetAccount.AccountName,
 			PeopleID:    req.PeopleID,
 			Debit:       nil,
-			Credit:      &arCreditAmount,
-			Status:      "1", // 1 = active, 0 = inactive/deleted
+			Credit:      &assetCreditAmount,
+			Status:      "1",
 		})
 	}
 
@@ -203,7 +174,7 @@ func (s *InvoiceService) CalculateSplitsForInvoice(req CreateInvoiceRequest, use
 			PeopleID:    req.PeopleID,
 			Debit:       &discountTotal,
 			Credit:      nil,
-			Status:      "1", // 1 = active, 0 = inactive/deleted
+			Status:      "1",
 		})
 	}
 
@@ -215,12 +186,11 @@ func (s *InvoiceService) CalculateSplitsForInvoice(req CreateInvoiceRequest, use
 			PeopleID:    req.PeopleID,
 			Debit:       &paymentTotal,
 			Credit:      nil,
-			Status:      "1", // 1 = active, 0 = inactive/deleted
+			Status:      "1",
 		})
 	}
 
 	// 4. Credit: Service Income Accounts (positive rates)
-	// This should always have entries if we have service items (validated above)
 	if len(serviceIncomeByAccount) == 0 && len(serviceDebitByAccount) == 0 && serviceTotalAmount > 0 {
 		return nil, fmt.Errorf("no income account found for service items - service items must have an income account configured")
 	}
@@ -237,7 +207,7 @@ func (s *InvoiceService) CalculateSplitsForInvoice(req CreateInvoiceRequest, use
 			PeopleID:    req.PeopleID,
 			Debit:       nil,
 			Credit:      &creditAmount,
-			Status:      "1", // 1 = active, 0 = inactive/deleted
+			Status:      "1",
 		})
 	}
 
@@ -254,11 +224,11 @@ func (s *InvoiceService) CalculateSplitsForInvoice(req CreateInvoiceRequest, use
 			PeopleID:    req.PeopleID,
 			Debit:       &debitAmount,
 			Credit:      nil,
-			Status:      "1", // 1 = active, 0 = inactive/deleted
+			Status:      "1",
 		})
 	}
 
-	// If total credits don't match total debits, adjust
+	// Calculate totals and balance
 	totalDebit := 0.0
 	totalCredit := 0.0
 	for _, split := range splits {
@@ -272,24 +242,22 @@ func (s *InvoiceService) CalculateSplitsForInvoice(req CreateInvoiceRequest, use
 
 	// Balance the splits if needed
 	if totalDebit != totalCredit {
-		// Adjust the service income account to balance
 		if len(serviceIncomeByAccount) > 0 {
-			// Find the first service income split and adjust it
 			for i := range splits {
 				if splits[i].Credit != nil && splits[i].Debit == nil {
 					diff := totalDebit - totalCredit
 					newCredit := *splits[i].Credit + diff
 					splits[i].Credit = &newCredit
-					totalCredit = totalDebit // Update total credit
+					totalCredit = totalDebit
 					break
 				}
 			}
 		}
 	}
 
-	// Validate: Must have at least 2 splits and be balanced for double-entry accounting
+	// Validate: Must have at least 2 splits and be balanced
 	if len(splits) < 2 {
-		return nil, fmt.Errorf("invoice must have at least 2 splits for double-entry accounting, got %d", len(splits))
+		return nil, fmt.Errorf("sales receipt must have at least 2 splits for double-entry accounting, got %d", len(splits))
 	}
 
 	if totalDebit != totalCredit {
@@ -299,24 +267,21 @@ func (s *InvoiceService) CalculateSplitsForInvoice(req CreateInvoiceRequest, use
 	return splits, nil
 }
 
-// PreviewInvoice calculates and returns the splits that will be created
-func (s *InvoiceService) PreviewInvoice(req CreateInvoiceRequest, userID int) (*InvoicePreviewResponse, error) {
-	// Validate request
+// PreviewSalesReceipt calculates and returns the splits that will be created
+func (s *SalesReceiptService) PreviewSalesReceipt(req CreateSalesReceiptRequest, userID int) (*SalesReceiptPreviewResponse, error) {
 	if req.Amount <= 0 {
 		return nil, fmt.Errorf("amount must be greater than 0")
 	}
 
 	if len(req.Items) == 0 {
-		return nil, fmt.Errorf("invoice must have at least one item")
+		return nil, fmt.Errorf("sales receipt must have at least one item")
 	}
 
-	// Calculate splits
-	splitPreviews, err := s.CalculateSplitsForInvoice(req, userID)
+	splitPreviews, err := s.CalculateSplitsForSalesReceipt(req, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Calculate totals
 	totalDebit := 0.0
 	totalCredit := 0.0
 	for _, split := range splitPreviews {
@@ -330,8 +295,8 @@ func (s *InvoiceService) PreviewInvoice(req CreateInvoiceRequest, userID int) (*
 
 	isBalanced := totalDebit == totalCredit
 
-	return &InvoicePreviewResponse{
-		Invoice:     req,
+	return &SalesReceiptPreviewResponse{
+		Receipt:     req,
 		Splits:      splitPreviews,
 		TotalDebit:  totalDebit,
 		TotalCredit: totalCredit,
@@ -339,16 +304,16 @@ func (s *InvoiceService) PreviewInvoice(req CreateInvoiceRequest, userID int) (*
 	}, nil
 }
 
-// CreateInvoice creates the invoice with transaction and splits
+// CreateSalesReceipt creates the sales receipt with transaction and splits
 // All operations are wrapped in a database transaction to ensure atomicity
-func (s *InvoiceService) CreateInvoice(req CreateInvoiceRequest, userID int) (*InvoiceResponse, error) {
-	// Check for duplicate invoice number (before transaction)
-	exists, err := s.invoiceRepo.CheckDuplicateInvoiceNo(req.BuildingID, req.InvoiceNo, 0)
+func (s *SalesReceiptService) CreateSalesReceipt(req CreateSalesReceiptRequest, userID int) (*SalesReceiptResponse, error) {
+	// Check for duplicate receipt number
+	exists, err := s.receiptRepo.CheckDuplicateReceiptNo(req.BuildingID, req.ReceiptNo, 0)
 	if err != nil {
 		return nil, err
 	}
 	if exists {
-		return nil, fmt.Errorf("invoice number already exists for this building")
+		return nil, fmt.Errorf("receipt number already exists for this building")
 	}
 
 	// Start database transaction
@@ -356,9 +321,10 @@ func (s *InvoiceService) CreateInvoice(req CreateInvoiceRequest, userID int) (*I
 	if err != nil {
 		return nil, fmt.Errorf("failed to start transaction: %v", err)
 	}
-	defer tx.Rollback() // Rollback on any error
+	defer tx.Rollback()
 
-	// Create transaction record - always use status 1 (active) when creating
+	// Create transaction record - always use status 1 (active)
+	transactionStatus := 1
 	var unitID interface{}
 	if req.UnitID != nil {
 		unitID = *req.UnitID
@@ -366,10 +332,8 @@ func (s *InvoiceService) CreateInvoice(req CreateInvoiceRequest, userID int) (*I
 		unitID = nil
 	}
 
-	// Always use status 1 (active) when creating transactions
-	transactionStatus := 1
 	result, err := tx.Exec("INSERT INTO transactions (type, transaction_date, memo, status, building_id, user_id, unit_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		"invoice", req.SalesDate, req.Description, transactionStatus, req.BuildingID, userID, unitID)
+		"sales receipt", req.ReceiptDate, req.Description, transactionStatus, req.BuildingID, userID, unitID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create transaction: %v", err)
 	}
@@ -379,7 +343,8 @@ func (s *InvoiceService) CreateInvoice(req CreateInvoiceRequest, userID int) (*I
 		return nil, fmt.Errorf("failed to get transaction ID: %v", err)
 	}
 
-	// Create invoice
+	// Create sales receipt - always use status 1 (active)
+	receiptStatus := 1
 	var peopleID interface{}
 	if req.PeopleID != nil {
 		peopleID = *req.PeopleID
@@ -387,49 +352,35 @@ func (s *InvoiceService) CreateInvoice(req CreateInvoiceRequest, userID int) (*I
 		peopleID = nil
 	}
 
-	var arAccountID interface{}
-	if req.ARAccountID != nil {
-		arAccountID = *req.ARAccountID
-	} else {
-		arAccountID = nil
-	}
-
-	// Always use status 1 (active) when creating invoices
-	invoiceStatus := 1
-	result, err = tx.Exec("INSERT INTO invoices (invoice_no, transaction_id, sales_date, due_date, ar_account_id, unit_id, people_id, user_id, amount, description, refrence, cancel_reason, status, building_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		req.InvoiceNo, transactionID, req.SalesDate, req.DueDate, arAccountID, unitID, peopleID, userID, req.Amount, req.Description, req.Reference, nil, invoiceStatus, req.BuildingID)
+	result, err = tx.Exec("INSERT INTO sales_receipt (receipt_no, transaction_id, receipt_date, unit_id, people_id, user_id, account_id, amount, description, cancel_reason, status, building_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		req.ReceiptNo, transactionID, req.ReceiptDate, unitID, peopleID, userID, req.AccountID, req.Amount, req.Description, nil, receiptStatus, req.BuildingID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create invoice: %v", err)
+		return nil, fmt.Errorf("failed to create sales receipt: %v", err)
 	}
 
-	invoiceID, err := result.LastInsertId()
+	receiptID, err := result.LastInsertId()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get invoice ID: %v", err)
+		return nil, fmt.Errorf("failed to get receipt ID: %v", err)
 	}
 
-	// Create invoice items
+	// Create receipt items
 	for _, itemInput := range req.Items {
 		item, _, _, _, _, _, err := s.itemRepo.GetByID(itemInput.ItemID)
 		if err != nil {
 			return nil, fmt.Errorf("item %d not found: %v", itemInput.ItemID, err)
 		}
 
-		// Calculate total using rate from input
 		var total float64
 		var rate float64
 
-		// Parse rate from string input
 		if itemInput.Rate != nil && *itemInput.Rate != "" {
 			if _, err := fmt.Sscanf(*itemInput.Rate, "%f", &rate); err != nil {
-				// If parsing fails, use avg_cost as fallback
 				rate = item.AvgCost
 			}
 		} else {
-			// If no rate provided, use avg_cost
 			rate = item.AvgCost
 		}
 
-		// For discount/payment items, use absolute value of rate (qty is implicitly 1)
 		if item.Type == "discount" || item.Type == "payment" {
 			total = math.Abs(rate)
 		} else if itemInput.Qty != nil {
@@ -466,17 +417,16 @@ func (s *InvoiceService) CreateInvoice(req CreateInvoiceRequest, userID int) (*I
 			rateStr = nil
 		}
 
-		// Always use status 1 (active) when creating invoice items
 		itemStatus := 1
-		_, err = tx.Exec("INSERT INTO invoice_items (invoice_id, item_id, item_name, previous_value, current_value, qty, rate, total, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-			invoiceID, itemInput.ItemID, item.Name, previousValue, currentValue, qty, rateStr, total, itemStatus)
+		_, err = tx.Exec("INSERT INTO receipt_items (receipt_id, item_id, item_name, previous_value, current_value, qty, rate, total, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+			receiptID, itemInput.ItemID, item.Name, previousValue, currentValue, qty, rateStr, total, itemStatus)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create invoice item: %v", err)
+			return nil, fmt.Errorf("failed to create receipt item: %v", err)
 		}
 	}
 
 	// Calculate and create splits
-	splitPreviews, err := s.CalculateSplitsForInvoice(req, userID)
+	splitPreviews, err := s.CalculateSplitsForSalesReceipt(req, userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to calculate splits: %v", err)
 	}
@@ -504,7 +454,6 @@ func (s *InvoiceService) CreateInvoice(req CreateInvoiceRequest, userID int) (*I
 			credit = nil
 		}
 
-		// Always set status to "1" (active) when creating splits
 		_, err = tx.Exec("INSERT INTO splits (transaction_id, account_id, people_id, debit, credit, status) VALUES (?, ?, ?, ?, ?, ?)",
 			transactionID, preview.AccountID, peopleIDSplit, debit, credit, "1")
 		if err != nil {
@@ -523,9 +472,9 @@ func (s *InvoiceService) CreateInvoice(req CreateInvoiceRequest, userID int) (*I
 		return nil, fmt.Errorf("failed to fetch transaction: %v", err)
 	}
 
-	createdInvoice, err := s.invoiceRepo.GetByID(int(invoiceID))
+	createdReceipt, err := s.receiptRepo.GetByID(int(receiptID))
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch invoice: %v", err)
+		return nil, fmt.Errorf("failed to fetch sales receipt: %v", err)
 	}
 
 	createdSplits, err := s.splitRepo.GetByTransactionID(int(transactionID))
@@ -533,14 +482,14 @@ func (s *InvoiceService) CreateInvoice(req CreateInvoiceRequest, userID int) (*I
 		return nil, fmt.Errorf("failed to fetch splits: %v", err)
 	}
 
-	createdInvoiceItems, err := s.invoiceItemRepo.GetByInvoiceID(int(invoiceID))
+	createdReceiptItems, err := s.receiptItemRepo.GetByReceiptID(int(receiptID))
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch invoice items: %v", err)
+		return nil, fmt.Errorf("failed to fetch receipt items: %v", err)
 	}
 
-	return &InvoiceResponse{
-		Invoice:     createdInvoice,
-		Items:       createdInvoiceItems,
+	return &SalesReceiptResponse{
+		Receipt:     createdReceipt,
+		Items:       createdReceiptItems,
 		Splits:      createdSplits,
 		Transaction: createdTransaction,
 	}, nil

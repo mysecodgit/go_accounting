@@ -43,8 +43,15 @@ func (r *invoiceRepo) Create(invoice Invoice) (Invoice, error) {
 		cancelReason = nil
 	}
 
-	result, err := r.db.Exec("INSERT INTO invoices (invoice_no, transaction_id, sales_date, due_date, unit_id, people_id, user_id, amount, description, refrence, cancel_reason, status, building_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		invoice.InvoiceNo, invoice.TransactionID, invoice.SalesDate, invoice.DueDate, unitID, peopleID, invoice.UserID, invoice.Amount, invoice.Description, invoice.Reference, cancelReason, invoice.Status, invoice.BuildingID)
+	var arAccountID interface{}
+	if invoice.ARAccountID != nil {
+		arAccountID = *invoice.ARAccountID
+	} else {
+		arAccountID = nil
+	}
+
+	result, err := r.db.Exec("INSERT INTO invoices (invoice_no, transaction_id, sales_date, due_date, ar_account_id, unit_id, people_id, user_id, amount, description, refrence, cancel_reason, status, building_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		invoice.InvoiceNo, invoice.TransactionID, invoice.SalesDate, invoice.DueDate, arAccountID, unitID, peopleID, invoice.UserID, invoice.Amount, invoice.Description, invoice.Reference, cancelReason, invoice.Status, invoice.BuildingID)
 
 	if err != nil {
 		return invoice, err
@@ -53,16 +60,16 @@ func (r *invoiceRepo) Create(invoice Invoice) (Invoice, error) {
 	id, _ := result.LastInsertId()
 	invoice.ID = int(id)
 
-	err = r.db.QueryRow("SELECT id, invoice_no, transaction_id, sales_date, due_date, unit_id, people_id, user_id, amount, description, refrence, cancel_reason, status, building_id, createdAt, updatedAt FROM invoices WHERE id = ?", invoice.ID).
-		Scan(&invoice.ID, &invoice.InvoiceNo, &invoice.TransactionID, &invoice.SalesDate, &invoice.DueDate, &invoice.UnitID, &invoice.PeopleID, &invoice.UserID, &invoice.Amount, &invoice.Description, &invoice.Reference, &invoice.CancelReason, &invoice.Status, &invoice.BuildingID, &invoice.CreatedAt, &invoice.UpdatedAt)
+	err = r.db.QueryRow("SELECT id, invoice_no, transaction_id, sales_date, due_date, ar_account_id, unit_id, people_id, user_id, amount, description, refrence, cancel_reason, status, building_id, createdAt, updatedAt FROM invoices WHERE id = ?", invoice.ID).
+		Scan(&invoice.ID, &invoice.InvoiceNo, &invoice.TransactionID, &invoice.SalesDate, &invoice.DueDate, &invoice.ARAccountID, &invoice.UnitID, &invoice.PeopleID, &invoice.UserID, &invoice.Amount, &invoice.Description, &invoice.Reference, &invoice.CancelReason, &invoice.Status, &invoice.BuildingID, &invoice.CreatedAt, &invoice.UpdatedAt)
 
 	return invoice, err
 }
 
 func (r *invoiceRepo) GetByID(id int) (Invoice, error) {
 	var invoice Invoice
-	err := r.db.QueryRow("SELECT id, invoice_no, transaction_id, sales_date, due_date, unit_id, people_id, user_id, amount, description, refrence, cancel_reason, status, building_id, createdAt, updatedAt FROM invoices WHERE id = ?", id).
-		Scan(&invoice.ID, &invoice.InvoiceNo, &invoice.TransactionID, &invoice.SalesDate, &invoice.DueDate, &invoice.UnitID, &invoice.PeopleID, &invoice.UserID, &invoice.Amount, &invoice.Description, &invoice.Reference, &invoice.CancelReason, &invoice.Status, &invoice.BuildingID, &invoice.CreatedAt, &invoice.UpdatedAt)
+	err := r.db.QueryRow("SELECT id, invoice_no, transaction_id, sales_date, due_date, ar_account_id, unit_id, people_id, user_id, amount, description, refrence, cancel_reason, status, building_id, createdAt, updatedAt FROM invoices WHERE id = ?", id).
+		Scan(&invoice.ID, &invoice.InvoiceNo, &invoice.TransactionID, &invoice.SalesDate, &invoice.DueDate, &invoice.ARAccountID, &invoice.UnitID, &invoice.PeopleID, &invoice.UserID, &invoice.Amount, &invoice.Description, &invoice.Reference, &invoice.CancelReason, &invoice.Status, &invoice.BuildingID, &invoice.CreatedAt, &invoice.UpdatedAt)
 
 	if err == sql.ErrNoRows {
 		return invoice, fmt.Errorf("invoice not found")
@@ -72,7 +79,7 @@ func (r *invoiceRepo) GetByID(id int) (Invoice, error) {
 }
 
 func (r *invoiceRepo) GetByBuildingID(buildingID int) ([]Invoice, error) {
-	rows, err := r.db.Query("SELECT id, invoice_no, transaction_id, sales_date, due_date, unit_id, people_id, user_id, amount, description, refrence, cancel_reason, status, building_id, createdAt, updatedAt FROM invoices WHERE building_id = ? ORDER BY createdAt DESC", buildingID)
+	rows, err := r.db.Query("SELECT id, invoice_no, transaction_id, sales_date, due_date, ar_account_id, unit_id, people_id, user_id, amount, description, refrence, cancel_reason, status, building_id, createdAt, updatedAt FROM invoices WHERE building_id = ? ORDER BY createdAt DESC", buildingID)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +88,7 @@ func (r *invoiceRepo) GetByBuildingID(buildingID int) ([]Invoice, error) {
 	invoices := []Invoice{}
 	for rows.Next() {
 		var invoice Invoice
-		err := rows.Scan(&invoice.ID, &invoice.InvoiceNo, &invoice.TransactionID, &invoice.SalesDate, &invoice.DueDate, &invoice.UnitID, &invoice.PeopleID, &invoice.UserID, &invoice.Amount, &invoice.Description, &invoice.Reference, &invoice.CancelReason, &invoice.Status, &invoice.BuildingID, &invoice.CreatedAt, &invoice.UpdatedAt)
+		err := rows.Scan(&invoice.ID, &invoice.InvoiceNo, &invoice.TransactionID, &invoice.SalesDate, &invoice.DueDate, &invoice.ARAccountID, &invoice.UnitID, &invoice.PeopleID, &invoice.UserID, &invoice.Amount, &invoice.Description, &invoice.Reference, &invoice.CancelReason, &invoice.Status, &invoice.BuildingID, &invoice.CreatedAt, &invoice.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -119,4 +126,3 @@ func (r *invoiceRepo) CheckDuplicateInvoiceNo(buildingID int, invoiceNo int, exc
 
 	return count > 0, nil
 }
-

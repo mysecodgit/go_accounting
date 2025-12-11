@@ -11,6 +11,7 @@ type Invoice struct {
 	TransactionID int     `json:"transaction_id"`
 	SalesDate     string  `json:"sales_date"`
 	DueDate       string  `json:"due_date"`
+	ARAccountID   *int    `json:"ar_account_id"`
 	UnitID        *int    `json:"unit_id"`
 	PeopleID      *int    `json:"people_id"`
 	UserID        int     `json:"user_id"`
@@ -95,4 +96,3 @@ func (i *Invoice) Validate() map[string]string {
 
 	return errors
 }
-

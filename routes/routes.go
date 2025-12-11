@@ -8,11 +8,15 @@ import (
 	"github.com/mysecodgit/go_accounting/src/accounts"
 	"github.com/mysecodgit/go_accounting/src/building"
 	"github.com/mysecodgit/go_accounting/src/invoice_items"
+	"github.com/mysecodgit/go_accounting/src/invoice_payments"
 	"github.com/mysecodgit/go_accounting/src/invoices"
 	"github.com/mysecodgit/go_accounting/src/items"
 	"github.com/mysecodgit/go_accounting/src/people"
 	"github.com/mysecodgit/go_accounting/src/people_types"
 	"github.com/mysecodgit/go_accounting/src/period"
+	"github.com/mysecodgit/go_accounting/src/receipt_items"
+	"github.com/mysecodgit/go_accounting/src/reports"
+	"github.com/mysecodgit/go_accounting/src/sales_receipt"
 	"github.com/mysecodgit/go_accounting/src/splits"
 	"github.com/mysecodgit/go_accounting/src/transactions"
 	"github.com/mysecodgit/go_accounting/src/unit"
@@ -47,6 +51,24 @@ func SetupRoutes(r *gin.Engine) {
 	invoiceRepo := invoices.NewInvoiceRepository(config.DB)
 	invoiceService := invoices.NewInvoiceService(invoiceRepo, transactionRepo, splitRepo, invoiceItemRepo, itemRepoForInvoice, accountRepoForInvoice, config.DB)
 	invoiceHandler := invoices.NewInvoiceHandler(invoiceService)
+
+	// Initialize sales receipt dependencies
+	receiptItemRepo := receipt_items.NewReceiptItemRepository(config.DB)
+	itemRepoForReceipt := items.NewItemRepository(config.DB)
+	accountRepoForReceipt := accounts.NewAccountRepository(config.DB)
+	receiptRepo := sales_receipt.NewSalesReceiptRepository(config.DB)
+	receiptService := sales_receipt.NewSalesReceiptService(receiptRepo, transactionRepo, splitRepo, receiptItemRepo, itemRepoForReceipt, accountRepoForReceipt, config.DB)
+	receiptHandler := sales_receipt.NewSalesReceiptHandler(receiptService)
+
+	// Initialize invoice payment dependencies
+	paymentRepo := invoice_payments.NewInvoicePaymentRepository(config.DB)
+	paymentService := invoice_payments.NewInvoicePaymentService(paymentRepo, transactionRepo, splitRepo, invoiceRepo, accountRepoForInvoice, config.DB)
+	paymentHandler := invoice_payments.NewInvoicePaymentHandler(paymentService)
+
+	// Initialize reports dependencies
+	peopleRepo := people.NewPersonRepository(config.DB)
+	reportsService := reports.NewReportsService(accountRepoForInvoice, splitRepo, transactionRepo, invoiceRepo, paymentRepo, peopleRepo, config.DB)
+	reportsHandler := reports.NewReportsHandler(reportsService)
 
 	buildingRoutes := r.Group("/api/buildings")
 	{
@@ -105,7 +127,26 @@ func SetupRoutes(r *gin.Engine) {
 		buildingRoutes.POST("/:id/invoices/preview", invoiceHandler.PreviewInvoice)
 		buildingRoutes.POST("/:id/invoices", invoiceHandler.CreateInvoice)
 		buildingRoutes.GET("/:id/invoices", invoiceHandler.GetInvoices)
+		// Payments route must come before single invoice route to avoid conflict (more specific route first)
+		buildingRoutes.GET("/:id/invoices/:invoiceId/payments", paymentHandler.GetPaymentsByInvoice)
 		buildingRoutes.GET("/:id/invoices/:invoiceId", invoiceHandler.GetInvoice)
+
+		// Invoice Payment routes (building-scoped)
+		buildingRoutes.POST("/:id/invoice-payments", paymentHandler.CreateInvoicePayment)
+		buildingRoutes.GET("/:id/invoice-payments", paymentHandler.GetInvoicePayments)
+		buildingRoutes.GET("/:id/invoice-payments/:paymentId", paymentHandler.GetInvoicePayment)
+
+		// Reports routes (building-scoped)
+		buildingRoutes.GET("/:id/reports/balance-sheet", reportsHandler.GetBalanceSheet)
+		buildingRoutes.GET("/:id/reports/customers", reportsHandler.GetCustomerReport)
+		buildingRoutes.GET("/:id/reports/vendors", reportsHandler.GetVendorReport)
+		buildingRoutes.GET("/:id/reports/transaction-details", reportsHandler.GetTransactionDetails)
+
+		// Sales Receipt routes (building-scoped)
+		buildingRoutes.POST("/:id/sales-receipts/preview", receiptHandler.PreviewSalesReceipt)
+		buildingRoutes.POST("/:id/sales-receipts", receiptHandler.CreateSalesReceipt)
+		buildingRoutes.GET("/:id/sales-receipts", receiptHandler.GetSalesReceipts)
+		buildingRoutes.GET("/:id/sales-receipts/:receiptId", receiptHandler.GetSalesReceipt)
 	}
 
 	// Legacy routes (keeping for backward compatibility)
@@ -201,6 +242,23 @@ func SetupRoutes(r *gin.Engine) {
 	{
 		invoiceRoutes.POST("/preview", invoiceHandler.PreviewInvoice)
 		invoiceRoutes.POST("", invoiceHandler.CreateInvoice)
+		// Payments route must come before :id route to avoid conflict
+		invoiceRoutes.GET("/:id/payments", paymentHandler.GetPaymentsByInvoice)
 		invoiceRoutes.GET("/:id", invoiceHandler.GetInvoice)
+	}
+
+	// Sales Receipt routes (legacy)
+	receiptRoutes := r.Group("/api/sales-receipts")
+	{
+		receiptRoutes.POST("/preview", receiptHandler.PreviewSalesReceipt)
+		receiptRoutes.POST("", receiptHandler.CreateSalesReceipt)
+		receiptRoutes.GET("/:id", receiptHandler.GetSalesReceipt)
+	}
+
+	// Invoice Payment routes (legacy)
+	paymentRoutes := r.Group("/api/invoice-payments")
+	{
+		paymentRoutes.POST("", paymentHandler.CreateInvoicePayment)
+		paymentRoutes.GET("/:id", paymentHandler.GetInvoicePayment)
 	}
 }
