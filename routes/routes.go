@@ -7,10 +7,14 @@ import (
 	"github.com/mysecodgit/go_accounting/src/account_types"
 	"github.com/mysecodgit/go_accounting/src/accounts"
 	"github.com/mysecodgit/go_accounting/src/building"
+	"github.com/mysecodgit/go_accounting/src/checks"
+	"github.com/mysecodgit/go_accounting/src/expense_lines"
 	"github.com/mysecodgit/go_accounting/src/invoice_items"
 	"github.com/mysecodgit/go_accounting/src/invoice_payments"
 	"github.com/mysecodgit/go_accounting/src/invoices"
 	"github.com/mysecodgit/go_accounting/src/items"
+	"github.com/mysecodgit/go_accounting/src/journal"
+	"github.com/mysecodgit/go_accounting/src/journal_lines"
 	"github.com/mysecodgit/go_accounting/src/people"
 	"github.com/mysecodgit/go_accounting/src/people_types"
 	"github.com/mysecodgit/go_accounting/src/period"
@@ -64,6 +68,20 @@ func SetupRoutes(r *gin.Engine) {
 	paymentRepo := invoice_payments.NewInvoicePaymentRepository(config.DB)
 	paymentService := invoice_payments.NewInvoicePaymentService(paymentRepo, transactionRepo, splitRepo, invoiceRepo, accountRepoForInvoice, config.DB)
 	paymentHandler := invoice_payments.NewInvoicePaymentHandler(paymentService)
+
+	// Initialize checks dependencies
+	checkRepo := checks.NewCheckRepository(config.DB)
+	expenseLineRepo := expense_lines.NewExpenseLineRepository(config.DB)
+	accountTypeRepoForChecks := account_types.NewAccountTypeRepository(config.DB)
+	checkService := checks.NewCheckService(checkRepo, expenseLineRepo, transactionRepo, splitRepo, accountRepoForInvoice, accountTypeRepoForChecks, config.DB)
+	checkHandler := checks.NewCheckHandler(checkService)
+
+	// Initialize journal dependencies
+	journalRepo := journal.NewJournalRepository(config.DB)
+	journalLineRepo := journal_lines.NewJournalLineRepository(config.DB)
+	accountTypeRepoForJournal := account_types.NewAccountTypeRepository(config.DB)
+	journalService := journal.NewJournalService(journalRepo, journalLineRepo, transactionRepo, splitRepo, accountRepoForInvoice, accountTypeRepoForJournal, config.DB)
+	journalHandler := journal.NewJournalHandler(journalService)
 
 	// Initialize reports dependencies
 	peopleRepo := people.NewPersonRepository(config.DB)
@@ -143,12 +161,28 @@ func SetupRoutes(r *gin.Engine) {
 		buildingRoutes.GET("/:id/reports/trial-balance", reportsHandler.GetTrialBalance)
 		buildingRoutes.GET("/:id/reports/customers", reportsHandler.GetCustomerReport)
 		buildingRoutes.GET("/:id/reports/vendors", reportsHandler.GetVendorReport)
+		buildingRoutes.GET("/:id/reports/transaction-details-by-account", reportsHandler.GetTransactionDetailsByAccount)
 
 		// Sales Receipt routes (building-scoped)
 		buildingRoutes.POST("/:id/sales-receipts/preview", receiptHandler.PreviewSalesReceipt)
 		buildingRoutes.POST("/:id/sales-receipts", receiptHandler.CreateSalesReceipt)
 		buildingRoutes.GET("/:id/sales-receipts", receiptHandler.GetSalesReceipts)
+		buildingRoutes.PUT("/:id/sales-receipts/:receiptId", receiptHandler.UpdateSalesReceipt)
 		buildingRoutes.GET("/:id/sales-receipts/:receiptId", receiptHandler.GetSalesReceipt)
+
+		// Check routes (building-scoped)
+		buildingRoutes.POST("/:id/checks/preview", checkHandler.PreviewCheck)
+		buildingRoutes.POST("/:id/checks", checkHandler.CreateCheck)
+		buildingRoutes.GET("/:id/checks", checkHandler.GetChecks)
+		buildingRoutes.PUT("/:id/checks/:checkId", checkHandler.UpdateCheck)
+		buildingRoutes.GET("/:id/checks/:checkId", checkHandler.GetCheck)
+
+		// Journal routes (building-scoped)
+		buildingRoutes.POST("/:id/journals/preview", journalHandler.PreviewJournal)
+		buildingRoutes.POST("/:id/journals", journalHandler.CreateJournal)
+		buildingRoutes.GET("/:id/journals", journalHandler.GetJournals)
+		buildingRoutes.PUT("/:id/journals/:journalId", journalHandler.UpdateJournal)
+		buildingRoutes.GET("/:id/journals/:journalId", journalHandler.GetJournal)
 	}
 
 	// Legacy routes (keeping for backward compatibility)
@@ -255,6 +289,7 @@ func SetupRoutes(r *gin.Engine) {
 	{
 		receiptRoutes.POST("/preview", receiptHandler.PreviewSalesReceipt)
 		receiptRoutes.POST("", receiptHandler.CreateSalesReceipt)
+		receiptRoutes.PUT("/:id", receiptHandler.UpdateSalesReceipt)
 		receiptRoutes.GET("/:id", receiptHandler.GetSalesReceipt)
 	}
 

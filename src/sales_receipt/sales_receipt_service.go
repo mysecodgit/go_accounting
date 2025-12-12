@@ -321,10 +321,17 @@ func (s *SalesReceiptService) CreateSalesReceipt(req CreateSalesReceiptRequest, 
 	if err != nil {
 		return nil, fmt.Errorf("failed to start transaction: %v", err)
 	}
-	defer tx.Rollback()
 
-	// Create transaction record - always use status 1 (active)
-	transactionStatus := 1
+	// Track if transaction was committed to avoid unnecessary rollback
+	committed := false
+	defer func() {
+		if !committed {
+			tx.Rollback()
+		}
+	}()
+
+	// Create transaction record - always use status "1" (active)
+	transactionStatus := "1"
 	var unitID interface{}
 	if req.UnitID != nil {
 		unitID = *req.UnitID
@@ -343,8 +350,8 @@ func (s *SalesReceiptService) CreateSalesReceipt(req CreateSalesReceiptRequest, 
 		return nil, fmt.Errorf("failed to get transaction ID: %v", err)
 	}
 
-	// Create sales receipt - always use status 1 (active)
-	receiptStatus := 1
+	// Create sales receipt - always use status "1" (active)
+	receiptStatus := "1"
 	var peopleID interface{}
 	if req.PeopleID != nil {
 		peopleID = *req.PeopleID
@@ -417,7 +424,8 @@ func (s *SalesReceiptService) CreateSalesReceipt(req CreateSalesReceiptRequest, 
 			rateStr = nil
 		}
 
-		itemStatus := 1
+		// Always use status "1" (active) when creating receipt items
+		itemStatus := "1"
 		_, err = tx.Exec("INSERT INTO receipt_items (receipt_id, item_id, item_name, previous_value, current_value, qty, rate, total, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 			receiptID, itemInput.ItemID, item.Name, previousValue, currentValue, qty, rateStr, total, itemStatus)
 		if err != nil {
@@ -465,6 +473,7 @@ func (s *SalesReceiptService) CreateSalesReceipt(req CreateSalesReceiptRequest, 
 	if err = tx.Commit(); err != nil {
 		return nil, fmt.Errorf("failed to commit transaction: %v", err)
 	}
+	committed = true
 
 	// Fetch created records after successful commit
 	createdTransaction, err := s.transactionRepo.GetByID(int(transactionID))
@@ -493,4 +502,273 @@ func (s *SalesReceiptService) CreateSalesReceipt(req CreateSalesReceiptRequest, 
 		Splits:      createdSplits,
 		Transaction: createdTransaction,
 	}, nil
+}
+
+// UpdateSalesReceipt updates the sales receipt with transaction and splits
+// All operations are wrapped in a database transaction to ensure atomicity
+// Soft deletes existing receipt_items and splits by setting status='0', then recreates them
+func (s *SalesReceiptService) UpdateSalesReceipt(req UpdateSalesReceiptRequest, userID int) (*SalesReceiptResponse, error) {
+	// Validate receipt exists
+	existingReceipt, err := s.receiptRepo.GetByID(req.ID)
+	if err != nil {
+		return nil, fmt.Errorf("sales receipt not found: %v", err)
+	}
+
+	// Validate receipt belongs to the building
+	if existingReceipt.BuildingID != req.BuildingID {
+		return nil, fmt.Errorf("sales receipt does not belong to the specified building")
+	}
+
+	// Check for duplicate receipt number (excluding current receipt)
+	exists, err := s.receiptRepo.CheckDuplicateReceiptNo(req.BuildingID, req.ReceiptNo, req.ID)
+	if err != nil {
+		return nil, err
+	}
+	if exists {
+		return nil, fmt.Errorf("receipt number already exists for this building")
+	}
+
+	// Validate request
+	if req.Amount <= 0 {
+		return nil, fmt.Errorf("amount must be greater than 0")
+	}
+
+	if len(req.Items) == 0 {
+		return nil, fmt.Errorf("sales receipt must have at least one item")
+	}
+
+	// Start database transaction
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("failed to start transaction: %v", err)
+	}
+
+	// Track if transaction was committed to avoid unnecessary rollback
+	committed := false
+	defer func() {
+		if !committed {
+			tx.Rollback()
+		}
+	}()
+
+	// Update transaction record
+	var unitID interface{}
+	if req.UnitID != nil {
+		unitID = *req.UnitID
+	} else {
+		unitID = nil
+	}
+
+	_, err = tx.Exec("UPDATE transactions SET transaction_date = ?, memo = ?, unit_id = ? WHERE id = ?",
+		req.ReceiptDate, req.Description, unitID, existingReceipt.TransactionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update transaction: %v", err)
+	}
+
+	// Update sales receipt
+	var peopleID interface{}
+	if req.PeopleID != nil {
+		peopleID = *req.PeopleID
+	} else {
+		peopleID = nil
+	}
+
+	_, err = tx.Exec("UPDATE sales_receipt SET receipt_no = ?, receipt_date = ?, unit_id = ?, people_id = ?, account_id = ?, amount = ?, description = ? WHERE id = ?",
+		req.ReceiptNo, req.ReceiptDate, unitID, peopleID, req.AccountID, req.Amount, req.Description, req.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update sales receipt: %v", err)
+	}
+
+	// Soft delete existing receipt_items (set status='0')
+	_, err = tx.Exec("UPDATE receipt_items SET status = '0' WHERE receipt_id = ?", req.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to soft delete receipt items: %v", err)
+	}
+
+	// Soft delete existing splits (set status='0')
+	_, err = tx.Exec("UPDATE splits SET status = '0' WHERE transaction_id = ?", existingReceipt.TransactionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to soft delete splits: %v", err)
+	}
+
+	// Recreate receipt items
+	for _, itemInput := range req.Items {
+		item, _, _, _, _, _, err := s.itemRepo.GetByID(itemInput.ItemID)
+		if err != nil {
+			return nil, fmt.Errorf("item %d not found: %v", itemInput.ItemID, err)
+		}
+
+		// Calculate total using rate from input
+		var total float64
+		var rate float64
+
+		// Parse rate from string input
+		if itemInput.Rate != nil && *itemInput.Rate != "" {
+			if _, err := fmt.Sscanf(*itemInput.Rate, "%f", &rate); err != nil {
+				rate = item.AvgCost
+			}
+		} else {
+			rate = item.AvgCost
+		}
+
+		// For discount/payment items, use absolute value of rate (qty is implicitly 1)
+		if item.Type == "discount" || item.Type == "payment" {
+			total = math.Abs(rate)
+		} else if itemInput.Qty != nil {
+			total = *itemInput.Qty * rate
+		} else {
+			total = rate
+		}
+
+		var previousValue interface{}
+		if itemInput.PreviousValue != nil {
+			previousValue = *itemInput.PreviousValue
+		} else {
+			previousValue = nil
+		}
+
+		var currentValue interface{}
+		if itemInput.CurrentValue != nil {
+			currentValue = *itemInput.CurrentValue
+		} else {
+			currentValue = nil
+		}
+
+		var qty interface{}
+		if itemInput.Qty != nil {
+			qty = *itemInput.Qty
+		} else {
+			qty = nil
+		}
+
+		var rateStr interface{}
+		if itemInput.Rate != nil {
+			rateStr = *itemInput.Rate
+		} else {
+			rateStr = nil
+		}
+
+		// Always use status "1" (active) when creating receipt items
+		itemStatus := "1"
+		_, err = tx.Exec("INSERT INTO receipt_items (receipt_id, item_id, item_name, previous_value, current_value, qty, rate, total, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+			req.ID, itemInput.ItemID, item.Name, previousValue, currentValue, qty, rateStr, total, itemStatus)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create receipt item: %v", err)
+		}
+	}
+
+	// Calculate splits (convert UpdateSalesReceiptRequest to CreateSalesReceiptRequest for calculation)
+	createReq := CreateSalesReceiptRequest{
+		ReceiptNo:   req.ReceiptNo,
+		ReceiptDate: req.ReceiptDate,
+		UnitID:      req.UnitID,
+		PeopleID:    req.PeopleID,
+		AccountID:   req.AccountID,
+		Amount:      req.Amount,
+		Description: req.Description,
+		Status:      req.Status,
+		BuildingID:  req.BuildingID,
+		Items:       req.Items,
+	}
+
+	splitPreviews, err := s.CalculateSplitsForSalesReceipt(createReq, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to calculate splits: %v", err)
+	}
+
+	// Recreate splits within transaction
+	for _, preview := range splitPreviews {
+		var peopleIDSplit interface{}
+		if preview.PeopleID != nil {
+			peopleIDSplit = *preview.PeopleID
+		} else {
+			peopleIDSplit = nil
+		}
+
+		var debit interface{}
+		if preview.Debit != nil {
+			debit = *preview.Debit
+		} else {
+			debit = nil
+		}
+
+		var credit interface{}
+		if preview.Credit != nil {
+			credit = *preview.Credit
+		} else {
+			credit = nil
+		}
+
+		// Always set status to "1" (active) when creating splits
+		_, err = tx.Exec("INSERT INTO splits (transaction_id, account_id, people_id, debit, credit, status) VALUES (?, ?, ?, ?, ?, ?)",
+			existingReceipt.TransactionID, preview.AccountID, peopleIDSplit, debit, credit, "1")
+		if err != nil {
+			return nil, fmt.Errorf("failed to create split: %v", err)
+		}
+	}
+
+	// Commit transaction
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %v", err)
+	}
+	committed = true
+
+	// Fetch updated records after successful commit
+	updatedTransaction, err := s.transactionRepo.GetByID(existingReceipt.TransactionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch transaction: %v", err)
+	}
+
+	updatedReceipt, err := s.receiptRepo.GetByID(req.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch sales receipt: %v", err)
+	}
+
+	// Get only active splits (status='1')
+	updatedSplits, err := s.splitRepo.GetByTransactionID(existingReceipt.TransactionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch splits: %v", err)
+	}
+	// Filter to only active splits
+	activeSplits := []splits.Split{}
+	for _, split := range updatedSplits {
+		if split.Status == "1" {
+			activeSplits = append(activeSplits, split)
+		}
+	}
+
+	// Get only active receipt items (status='1')
+	updatedReceiptItems, err := s.receiptItemRepo.GetByReceiptID(req.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch receipt items: %v", err)
+	}
+	// Filter to only active items
+	activeItems := []receipt_items.ReceiptItem{}
+	for _, item := range updatedReceiptItems {
+		if item.Status == "1" {
+			activeItems = append(activeItems, item)
+		}
+	}
+
+	return &SalesReceiptResponse{
+		Receipt:     updatedReceipt,
+		Items:       activeItems,
+		Splits:      activeSplits,
+		Transaction: updatedTransaction,
+	}, nil
+}
+
+// GetReceiptItemRepo exposes the ReceiptItemRepository
+func (s *SalesReceiptService) GetReceiptItemRepo() receipt_items.ReceiptItemRepository {
+	return s.receiptItemRepo
+}
+
+// GetSplitRepo exposes the SplitRepository
+func (s *SalesReceiptService) GetSplitRepo() splits.SplitRepository {
+	return s.splitRepo
+}
+
+// GetTransactionRepo exposes the TransactionRepository
+func (s *SalesReceiptService) GetTransactionRepo() transactions.TransactionRepository {
+	return s.transactionRepo
 }

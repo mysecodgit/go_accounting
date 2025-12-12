@@ -195,3 +195,49 @@ func (h *ReportsHandler) GetTrialBalance(c *gin.Context) {
 
 	c.JSON(http.StatusOK, report)
 }
+
+// GET /reports/transaction-details-by-account
+func (h *ReportsHandler) GetTransactionDetailsByAccount(c *gin.Context) {
+	var req TransactionDetailsByAccountRequest
+
+	// Get building ID from route parameter (for building-scoped routes)
+	buildingIDStr := c.Param("id")
+	if buildingIDStr == "" {
+		// Try query parameter (for legacy routes)
+		buildingIDStr = c.Query("building_id")
+	}
+	if buildingIDStr != "" {
+		buildingID, err := strconv.Atoi(buildingIDStr)
+		if err == nil {
+			req.BuildingID = buildingID
+		}
+	}
+
+	if accountIDStr := c.Query("account_id"); accountIDStr != "" {
+		accountID, err := strconv.Atoi(accountIDStr)
+		if err == nil {
+			req.AccountID = &accountID
+		}
+	}
+
+	req.StartDate = c.Query("start_date")
+	req.EndDate = c.Query("end_date")
+
+	if req.BuildingID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Building ID is required"})
+		return
+	}
+
+	if req.StartDate == "" || req.EndDate == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Start date and end date are required"})
+		return
+	}
+
+	report, err := h.service.GetTransactionDetailsByAccount(req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, report)
+}

@@ -11,6 +11,7 @@ type SalesReceiptRepository interface {
 	GetByBuildingID(buildingID int) ([]SalesReceipt, error)
 	GetNextReceiptNo(buildingID int) (int, error)
 	CheckDuplicateReceiptNo(buildingID int, receiptNo int, excludeID int) (bool, error)
+	Update(receipt SalesReceipt) (SalesReceipt, error)
 }
 
 type salesReceiptRepo struct {
@@ -121,4 +122,36 @@ func (r *salesReceiptRepo) CheckDuplicateReceiptNo(buildingID int, receiptNo int
 	}
 
 	return count > 0, nil
+}
+
+func (r *salesReceiptRepo) Update(receipt SalesReceipt) (SalesReceipt, error) {
+	var unitID interface{}
+	if receipt.UnitID != nil {
+		unitID = *receipt.UnitID
+	} else {
+		unitID = nil
+	}
+
+	var peopleID interface{}
+	if receipt.PeopleID != nil {
+		peopleID = *receipt.PeopleID
+	} else {
+		peopleID = nil
+	}
+
+	var cancelReason interface{}
+	if receipt.CancelReason != nil {
+		cancelReason = *receipt.CancelReason
+	} else {
+		cancelReason = nil
+	}
+
+	_, err := r.db.Exec("UPDATE sales_receipt SET receipt_no = ?, receipt_date = ?, unit_id = ?, people_id = ?, account_id = ?, amount = ?, description = ?, cancel_reason = ? WHERE id = ?",
+		receipt.ReceiptNo, receipt.ReceiptDate, unitID, peopleID, receipt.AccountID, receipt.Amount, receipt.Description, cancelReason, receipt.ID)
+
+	if err != nil {
+		return receipt, err
+	}
+
+	return r.GetByID(receipt.ID)
 }

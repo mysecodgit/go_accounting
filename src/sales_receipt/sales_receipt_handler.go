@@ -117,9 +117,14 @@ func (h *SalesReceiptHandler) GetSalesReceipts(c *gin.Context) {
 	c.JSON(http.StatusOK, receipts)
 }
 
-// GET /sales-receipts/:id
+// GET /sales-receipts/:id or /buildings/:id/sales-receipts/:receiptId
 func (h *SalesReceiptHandler) GetSalesReceipt(c *gin.Context) {
-	idStr := c.Param("id")
+	// Try receiptId first (for building-scoped routes), then id (for legacy routes)
+	idStr := c.Param("receiptId")
+	if idStr == "" {
+		idStr = c.Param("id")
+	}
+
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
@@ -132,5 +137,71 @@ func (h *SalesReceiptHandler) GetSalesReceipt(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, receipt)
+	// Get receipt items and splits for full details
+	receiptItems, _ := h.service.GetReceiptItemRepo().GetByReceiptID(id)
+	splits, _ := h.service.GetSplitRepo().GetByTransactionID(receipt.TransactionID)
+	transaction, _ := h.service.GetTransactionRepo().GetByID(receipt.TransactionID)
+
+	c.JSON(http.StatusOK, SalesReceiptResponse{
+		Receipt:     receipt,
+		Items:       receiptItems,
+		Splits:      splits,
+		Transaction: transaction,
+	})
+}
+
+// PUT /sales-receipts/:id or /buildings/:id/sales-receipts/:receiptId
+func (h *SalesReceiptHandler) UpdateSalesReceipt(c *gin.Context) {
+	// Try receiptId first (for building-scoped routes), then id (for legacy routes)
+	idStr := c.Param("receiptId")
+	if idStr == "" {
+		idStr = c.Param("id")
+	}
+
+	receiptID, err := strconv.Atoi(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Receipt ID"})
+		return
+	}
+
+	var req UpdateSalesReceiptRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+		return
+	}
+
+	req.ID = receiptID // Set ID from URL parameter
+
+	// Get building_id from route if building-scoped
+	buildingIDStr := c.Param("id")
+	if buildingIDStr != "" {
+		buildingID, err := strconv.Atoi(buildingIDStr)
+		if err == nil {
+			req.BuildingID = buildingID
+		}
+	}
+
+	// Get user ID from context or header
+	userIDStr := c.GetHeader("User-ID")
+	if userIDStr == "" {
+		userIDStr = c.Query("user_id")
+	}
+	if userIDStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "User ID is required"})
+		return
+	}
+
+	userID, err := strconv.Atoi(userIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid User ID"})
+		return
+	}
+
+	response, err := h.service.UpdateSalesReceipt(req, userID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
 }

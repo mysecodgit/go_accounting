@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mysecodgit/go_accounting/src/account_types"
 	"github.com/mysecodgit/go_accounting/src/accounts"
 	"github.com/mysecodgit/go_accounting/src/invoice_payments"
 	"github.com/mysecodgit/go_accounting/src/invoices"
@@ -72,14 +73,21 @@ func (s *ReportsService) GetBalanceSheet(req BalanceSheetRequest) (*BalanceSheet
 		accountBalances[account.ID] = balance
 	}
 
-	// Categorize accounts into Assets, Liabilities, and Equity
+	// Categorize accounts into Assets, Liabilities, Equity, Income, and Expense
 	assets := []AccountBalance{}
 	liabilities := []AccountBalance{}
 	equity := []AccountBalance{}
+	incomeAccounts := []AccountBalance{}
+	expenseAccounts := []AccountBalance{}
 
 	for i, account := range accountsList {
 		accountType := accountTypes[i]
 		balance := accountBalances[account.ID]
+
+		// Skip accounts with 0 balance
+		if balance == 0 {
+			continue
+		}
 
 		accountBalance := AccountBalance{
 			AccountID:     account.ID,
@@ -97,12 +105,35 @@ func (s *ReportsService) GetBalanceSheet(req BalanceSheetRequest) (*BalanceSheet
 			liabilities = append(liabilities, accountBalance)
 		} else if typeLower == "equity" {
 			equity = append(equity, accountBalance)
-		} else if typeLower == "income" || typeLower == "expense" {
-			// Income and Expense accounts are typically shown in Income Statement, not Balance Sheet
-			// But for now, we'll include them in Equity section (Income increases equity, Expense decreases)
-			// You might want to create a separate Income Statement report later
-			equity = append(equity, accountBalance)
+		} else if typeLower == "income" {
+			incomeAccounts = append(incomeAccounts, accountBalance)
+		} else if typeLower == "expense" {
+			expenseAccounts = append(expenseAccounts, accountBalance)
 		}
+	}
+
+	// Calculate Net Income = Total Income - Total Expenses
+	totalIncome := 0.0
+	for _, income := range incomeAccounts {
+		totalIncome += income.Balance
+	}
+
+	totalExpenses := 0.0
+	for _, expense := range expenseAccounts {
+		totalExpenses += expense.Balance
+	}
+
+	netIncome := totalIncome - totalExpenses
+
+	// Add Net Income to equity section (only if it's not zero)
+	if netIncome != 0 {
+		equity = append(equity, AccountBalance{
+			AccountID:     0, // 0 indicates this is a calculated value, not an actual account
+			AccountNumber: "",
+			AccountName:   "Net Income",
+			AccountType:   "Net Income",
+			Balance:       netIncome,
+		})
 	}
 
 	// Calculate totals
@@ -653,4 +684,144 @@ func (s *ReportsService) calculatePersonBalanceFromSplits(peopleID int, accountI
 
 	// Default: assume debit account (Account Receivable)
 	return debitAmount - creditAmount, nil
+}
+
+// GetTransactionDetailsByAccount generates a transaction details report grouped by account
+func (s *ReportsService) GetTransactionDetailsByAccount(req TransactionDetailsByAccountRequest) (*TransactionDetailsByAccountResponse, error) {
+	if req.StartDate == "" || req.EndDate == "" {
+		return nil, fmt.Errorf("start date and end date are required")
+	}
+
+	// Get accounts to process
+	var accountsList []accounts.Account
+	var accountTypesList []account_types.AccountType
+	var err error
+
+	if req.AccountID != nil && *req.AccountID > 0 {
+		// Get specific account
+		account, accountType, _, err := s.accountRepo.GetByID(*req.AccountID)
+		if err != nil {
+			return nil, fmt.Errorf("account not found: %v", err)
+		}
+		accountsList = []accounts.Account{account}
+		accountTypesList = []account_types.AccountType{accountType}
+	} else {
+		// Get all accounts for the building
+		accountsList, accountTypesList, _, err = s.accountRepo.GetByBuildingID(req.BuildingID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get accounts: %v", err)
+		}
+	}
+
+	accountDetails := []AccountTransactionDetails{}
+	grandTotalDebit := 0.0
+	grandTotalCredit := 0.0
+
+	// Process each account
+	for i, account := range accountsList {
+		accountType := accountTypesList[i]
+
+		// Get splits for this account within date range
+		splits, err := s.splitRepo.GetByAccountIDAndDateRange(account.ID, req.BuildingID, req.StartDate, req.EndDate)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get splits for account %d: %v", account.ID, err)
+		}
+
+		if len(splits) == 0 {
+			continue // Skip accounts with no transactions
+		}
+
+		// Build transaction details for each split
+		splitDetails := []TransactionDetailSplit{}
+		runningBalance := 0.0
+		accountTotalDebit := 0.0
+		accountTotalCredit := 0.0
+
+		for _, split := range splits {
+			// Get transaction details
+			transaction, err := s.transactionRepo.GetByID(split.TransactionID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get transaction %d: %v", split.TransactionID, err)
+			}
+
+			// Get people name if people_id exists
+			var peopleName *string
+			if split.PeopleID != nil {
+				person, _, _, err := s.peopleRepo.GetByID(*split.PeopleID)
+				if err == nil {
+					peopleName = &person.Name
+				}
+			}
+
+			// Calculate running balance
+			debitAmount := 0.0
+			if split.Debit != nil {
+				debitAmount = *split.Debit
+				runningBalance += debitAmount
+				accountTotalDebit += debitAmount
+			}
+
+			creditAmount := 0.0
+			if split.Credit != nil {
+				creditAmount = *split.Credit
+				runningBalance -= creditAmount
+				accountTotalCredit += creditAmount
+			}
+
+			splitDetails = append(splitDetails, TransactionDetailSplit{
+				SplitID:         split.ID,
+				TransactionID:   split.TransactionID,
+				TransactionDate: transaction.TransactionDate,
+				TransactionType: transaction.Type,
+				TransactionMemo: transaction.Memo,
+				PeopleID:        split.PeopleID,
+				PeopleName:      peopleName,
+				Description:     nil, // Can be enhanced later if needed
+				Debit:           split.Debit,
+				Credit:          split.Credit,
+				Balance:         runningBalance,
+			})
+		}
+
+		// Calculate final balance (last running balance)
+		finalBalance := runningBalance
+
+		// Add account details
+		accountDetails = append(accountDetails, AccountTransactionDetails{
+			AccountID:     account.ID,
+			AccountNumber: account.AccountNumber,
+			AccountName:   account.AccountName,
+			AccountType:   accountType.TypeName,
+			Splits:        splitDetails,
+			TotalDebit:    accountTotalDebit,
+			TotalCredit:   accountTotalCredit,
+			TotalBalance:  finalBalance,
+			IsTotalRow:    false,
+		})
+
+		// Add total row for this account
+		accountDetails = append(accountDetails, AccountTransactionDetails{
+			AccountID:     account.ID,
+			AccountNumber: account.AccountNumber,
+			AccountName:   "TOTAL",
+			AccountType:   "",
+			Splits:        []TransactionDetailSplit{},
+			TotalDebit:    accountTotalDebit,
+			TotalCredit:   accountTotalCredit,
+			TotalBalance:  finalBalance,
+			IsTotalRow:    true,
+		})
+
+		grandTotalDebit += accountTotalDebit
+		grandTotalCredit += accountTotalCredit
+	}
+
+	return &TransactionDetailsByAccountResponse{
+		BuildingID:       req.BuildingID,
+		StartDate:        req.StartDate,
+		EndDate:          req.EndDate,
+		Accounts:         accountDetails,
+		GrandTotalDebit:  grandTotalDebit,
+		GrandTotalCredit: grandTotalCredit,
+	}, nil
 }

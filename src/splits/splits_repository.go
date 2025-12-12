@@ -10,6 +10,7 @@ type SplitRepository interface {
 	CreateBatch(splits []Split) error
 	GetByTransactionID(transactionID int) ([]Split, error)
 	GetByID(id int) (Split, error)
+	GetByAccountIDAndDateRange(accountID int, buildingID int, startDate string, endDate string) ([]Split, error)
 }
 
 type splitRepo struct {
@@ -132,5 +133,45 @@ func (r *splitRepo) GetByID(id int) (Split, error) {
 	}
 
 	return split, err
+}
+
+func (r *splitRepo) GetByAccountIDAndDateRange(accountID int, buildingID int, startDate string, endDate string) ([]Split, error) {
+	query := `
+		SELECT s.id, s.transaction_id, s.account_id, s.people_id, s.debit, s.credit, s.status, s.created_at, s.updated_at
+		FROM splits s
+		INNER JOIN transactions t ON s.transaction_id = t.id
+		WHERE s.account_id = ? AND t.building_id = ? AND s.status = '1' AND t.status = '1'
+	`
+	args := []interface{}{accountID, buildingID}
+	
+	if startDate != "" {
+		query += " AND t.transaction_date >= ?"
+		args = append(args, startDate)
+	}
+	
+	if endDate != "" {
+		query += " AND t.transaction_date <= ?"
+		args = append(args, endDate)
+	}
+	
+	query += " ORDER BY t.transaction_date, s.id"
+	
+	rows, err := r.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	splits := []Split{}
+	for rows.Next() {
+		var split Split
+		err := rows.Scan(&split.ID, &split.TransactionID, &split.AccountID, &split.PeopleID, &split.Debit, &split.Credit, &split.Status, &split.CreatedAt, &split.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		splits = append(splits, split)
+	}
+
+	return splits, nil
 }
 

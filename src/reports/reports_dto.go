@@ -91,3 +91,46 @@ type TrialBalanceResponse struct {
 	TotalCredit float64               `json:"total_credit"`
 	IsBalanced  bool                  `json:"is_balanced"`
 }
+
+// Transaction Details by Account DTOs
+type TransactionDetailsByAccountRequest struct {
+	BuildingID int    `json:"building_id"`
+	AccountID  *int   `json:"account_id"` // Optional: filter by specific account
+	StartDate  string `json:"start_date"`
+	EndDate    string `json:"end_date"`
+}
+
+type TransactionDetailSplit struct {
+	SplitID         int      `json:"split_id"`
+	TransactionID   int      `json:"transaction_id"`
+	TransactionDate string   `json:"transaction_date"`
+	TransactionType string   `json:"transaction_type"`
+	TransactionMemo string   `json:"transaction_memo"`
+	PeopleID        *int     `json:"people_id"`
+	PeopleName      *string  `json:"people_name,omitempty"`
+	Description     *string  `json:"description,omitempty"`
+	Debit           *float64 `json:"debit"`
+	Credit          *float64 `json:"credit"`
+	Balance         float64  `json:"balance"` // Running balance for this account
+}
+
+type AccountTransactionDetails struct {
+	AccountID     int                      `json:"account_id"`
+	AccountNumber int                      `json:"account_number"`
+	AccountName   string                   `json:"account_name"`
+	AccountType   string                   `json:"account_type"`
+	Splits        []TransactionDetailSplit `json:"splits"`
+	TotalDebit    float64                  `json:"total_debit"`
+	TotalCredit   float64                  `json:"total_credit"`
+	TotalBalance  float64                  `json:"total_balance"`          // Final balance for the account
+	IsTotalRow    bool                     `json:"is_total_row,omitempty"` // Flag for total row
+}
+
+type TransactionDetailsByAccountResponse struct {
+	BuildingID       int                         `json:"building_id"`
+	StartDate        string                      `json:"start_date"`
+	EndDate          string                      `json:"end_date"`
+	Accounts         []AccountTransactionDetails `json:"accounts"`
+	GrandTotalDebit  float64                     `json:"grand_total_debit"`
+	GrandTotalCredit float64                     `json:"grand_total_credit"`
+}

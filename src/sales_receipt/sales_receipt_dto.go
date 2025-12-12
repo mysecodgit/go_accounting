@@ -44,6 +44,20 @@ type SalesReceiptPreviewResponse struct {
 	IsBalanced  bool                      `json:"is_balanced"`
 }
 
+type UpdateSalesReceiptRequest struct {
+	ID          int                `json:"id"`
+	ReceiptNo   int                `json:"receipt_no"`
+	ReceiptDate string             `json:"receipt_date"`
+	UnitID      *int               `json:"unit_id"`
+	PeopleID    *int               `json:"people_id"`
+	AccountID   int                `json:"account_id"`
+	Amount      float64            `json:"amount"`
+	Description string             `json:"description"`
+	Status      *int               `json:"status"`
+	BuildingID  int                `json:"building_id"`
+	Items       []ReceiptItemInput `json:"items"`
+}
+
 type SalesReceiptResponse struct {
 	Receipt     SalesReceipt                `json:"receipt"`
 	Items       []receipt_items.ReceiptItem `json:"items"`
