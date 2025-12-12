@@ -130,6 +130,7 @@ func SetupRoutes(r *gin.Engine) {
 		buildingRoutes.GET("/:id/invoices", invoiceHandler.GetInvoices)
 		// Payments route must come before single invoice route to avoid conflict (more specific route first)
 		buildingRoutes.GET("/:id/invoices/:invoiceId/payments", paymentHandler.GetPaymentsByInvoice)
+		buildingRoutes.PUT("/:id/invoices/:invoiceId", invoiceHandler.UpdateInvoice)
 		buildingRoutes.GET("/:id/invoices/:invoiceId", invoiceHandler.GetInvoice)
 
 		// Invoice Payment routes (building-scoped)
@@ -245,6 +246,7 @@ func SetupRoutes(r *gin.Engine) {
 		invoiceRoutes.POST("", invoiceHandler.CreateInvoice)
 		// Payments route must come before :id route to avoid conflict
 		invoiceRoutes.GET("/:id/payments", paymentHandler.GetPaymentsByInvoice)
+		invoiceRoutes.PUT("/:id", invoiceHandler.UpdateInvoice)
 		invoiceRoutes.GET("/:id", invoiceHandler.GetInvoice)
 	}
 

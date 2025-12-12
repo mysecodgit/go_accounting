@@ -27,6 +27,21 @@ func (s *InvoiceService) GetInvoiceRepo() InvoiceRepository {
 	return s.invoiceRepo
 }
 
+// Expose invoiceItemRepo for handler access
+func (s *InvoiceService) GetInvoiceItemRepo() invoice_items.InvoiceItemRepository {
+	return s.invoiceItemRepo
+}
+
+// Expose splitRepo for handler access
+func (s *InvoiceService) GetSplitRepo() splits.SplitRepository {
+	return s.splitRepo
+}
+
+// Expose transactionRepo for handler access
+func (s *InvoiceService) GetTransactionRepo() transactions.TransactionRepository {
+	return s.transactionRepo
+}
+
 func NewInvoiceService(
 	invoiceRepo InvoiceRepository,
 	transactionRepo transactions.TransactionRepository,
@@ -356,7 +371,14 @@ func (s *InvoiceService) CreateInvoice(req CreateInvoiceRequest, userID int) (*I
 	if err != nil {
 		return nil, fmt.Errorf("failed to start transaction: %v", err)
 	}
-	defer tx.Rollback() // Rollback on any error
+
+	// Track if transaction was committed to avoid unnecessary rollback
+	committed := false
+	defer func() {
+		if !committed {
+			tx.Rollback()
+		}
+	}()
 
 	// Create transaction record - always use status 1 (active) when creating
 	var unitID interface{}
@@ -366,8 +388,8 @@ func (s *InvoiceService) CreateInvoice(req CreateInvoiceRequest, userID int) (*I
 		unitID = nil
 	}
 
-	// Always use status 1 (active) when creating transactions
-	transactionStatus := 1
+	// Always use status "1" (active) when creating transactions
+	transactionStatus := "1"
 	result, err := tx.Exec("INSERT INTO transactions (type, transaction_date, memo, status, building_id, user_id, unit_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
 		"invoice", req.SalesDate, req.Description, transactionStatus, req.BuildingID, userID, unitID)
 	if err != nil {
@@ -394,8 +416,8 @@ func (s *InvoiceService) CreateInvoice(req CreateInvoiceRequest, userID int) (*I
 		arAccountID = nil
 	}
 
-	// Always use status 1 (active) when creating invoices
-	invoiceStatus := 1
+	// Always use status "1" (active) when creating invoices
+	invoiceStatus := "1"
 	result, err = tx.Exec("INSERT INTO invoices (invoice_no, transaction_id, sales_date, due_date, ar_account_id, unit_id, people_id, user_id, amount, description, refrence, cancel_reason, status, building_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
 		req.InvoiceNo, transactionID, req.SalesDate, req.DueDate, arAccountID, unitID, peopleID, userID, req.Amount, req.Description, req.Reference, nil, invoiceStatus, req.BuildingID)
 	if err != nil {
@@ -466,8 +488,8 @@ func (s *InvoiceService) CreateInvoice(req CreateInvoiceRequest, userID int) (*I
 			rateStr = nil
 		}
 
-		// Always use status 1 (active) when creating invoice items
-		itemStatus := 1
+		// Always use status "1" (active) when creating invoice items
+		itemStatus := "1"
 		_, err = tx.Exec("INSERT INTO invoice_items (invoice_id, item_id, item_name, previous_value, current_value, qty, rate, total, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 			invoiceID, itemInput.ItemID, item.Name, previousValue, currentValue, qty, rateStr, total, itemStatus)
 		if err != nil {
@@ -516,6 +538,7 @@ func (s *InvoiceService) CreateInvoice(req CreateInvoiceRequest, userID int) (*I
 	if err = tx.Commit(); err != nil {
 		return nil, fmt.Errorf("failed to commit transaction: %v", err)
 	}
+	committed = true
 
 	// Fetch created records after successful commit
 	createdTransaction, err := s.transactionRepo.GetByID(int(transactionID))
@@ -543,5 +566,270 @@ func (s *InvoiceService) CreateInvoice(req CreateInvoiceRequest, userID int) (*I
 		Items:       createdInvoiceItems,
 		Splits:      createdSplits,
 		Transaction: createdTransaction,
+	}, nil
+}
+
+// UpdateInvoice updates the invoice with transaction and splits
+// All operations are wrapped in a database transaction to ensure atomicity
+// Soft deletes existing invoice_items and splits by setting status='0', then recreates them
+func (s *InvoiceService) UpdateInvoice(req UpdateInvoiceRequest, userID int) (*InvoiceResponse, error) {
+	// Validate invoice exists
+	existingInvoice, err := s.invoiceRepo.GetByID(req.ID)
+	if err != nil {
+		return nil, fmt.Errorf("invoice not found: %v", err)
+	}
+
+	// Validate invoice belongs to the building
+	if existingInvoice.BuildingID != req.BuildingID {
+		return nil, fmt.Errorf("invoice does not belong to the specified building")
+	}
+
+	// Check for duplicate invoice number (excluding current invoice)
+	exists, err := s.invoiceRepo.CheckDuplicateInvoiceNo(req.BuildingID, req.InvoiceNo, req.ID)
+	if err != nil {
+		return nil, err
+	}
+	if exists {
+		return nil, fmt.Errorf("invoice number already exists for this building")
+	}
+
+	// Validate request
+	if req.Amount <= 0 {
+		return nil, fmt.Errorf("amount must be greater than 0")
+	}
+
+	if len(req.Items) == 0 {
+		return nil, fmt.Errorf("invoice must have at least one item")
+	}
+
+	// Start database transaction
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("failed to start transaction: %v", err)
+	}
+
+	// Track if transaction was committed to avoid unnecessary rollback
+	committed := false
+	defer func() {
+		if !committed {
+			tx.Rollback()
+		}
+	}()
+
+	// Update transaction record
+	var unitID interface{}
+	if req.UnitID != nil {
+		unitID = *req.UnitID
+	} else {
+		unitID = nil
+	}
+
+	_, err = tx.Exec("UPDATE transactions SET transaction_date = ?, memo = ? WHERE id = ?",
+		req.SalesDate, req.Description, existingInvoice.TransactionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update transaction: %v", err)
+	}
+
+	// Update invoice
+	var peopleID interface{}
+	if req.PeopleID != nil {
+		peopleID = *req.PeopleID
+	} else {
+		peopleID = nil
+	}
+
+	var arAccountID interface{}
+	if req.ARAccountID != nil {
+		arAccountID = *req.ARAccountID
+	} else {
+		arAccountID = nil
+	}
+
+	_, err = tx.Exec("UPDATE invoices SET invoice_no = ?, sales_date = ?, due_date = ?, ar_account_id = ?, unit_id = ?, people_id = ?, amount = ?, description = ?, refrence = ? WHERE id = ?",
+		req.InvoiceNo, req.SalesDate, req.DueDate, arAccountID, unitID, peopleID, req.Amount, req.Description, req.Reference, req.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update invoice: %v", err)
+	}
+
+	// Soft delete existing invoice_items (set status='0')
+	_, err = tx.Exec("UPDATE invoice_items SET status = '0' WHERE invoice_id = ?", req.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to soft delete invoice items: %v", err)
+	}
+
+	// Soft delete existing splits (set status='0')
+	_, err = tx.Exec("UPDATE splits SET status = '0' WHERE transaction_id = ?", existingInvoice.TransactionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to soft delete splits: %v", err)
+	}
+
+	// Recreate invoice items
+	for _, itemInput := range req.Items {
+		item, _, _, _, _, _, err := s.itemRepo.GetByID(itemInput.ItemID)
+		if err != nil {
+			return nil, fmt.Errorf("item %d not found: %v", itemInput.ItemID, err)
+		}
+
+		// Calculate total using rate from input
+		var total float64
+		var rate float64
+
+		// Parse rate from string input
+		if itemInput.Rate != nil && *itemInput.Rate != "" {
+			if _, err := fmt.Sscanf(*itemInput.Rate, "%f", &rate); err != nil {
+				// If parsing fails, use avg_cost as fallback
+				rate = item.AvgCost
+			}
+		} else {
+			// If no rate provided, use avg_cost
+			rate = item.AvgCost
+		}
+
+		// For discount/payment items, use absolute value of rate (qty is implicitly 1)
+		if item.Type == "discount" || item.Type == "payment" {
+			total = math.Abs(rate)
+		} else if itemInput.Qty != nil {
+			total = *itemInput.Qty * rate
+		} else {
+			total = rate
+		}
+
+		var previousValue interface{}
+		if itemInput.PreviousValue != nil {
+			previousValue = *itemInput.PreviousValue
+		} else {
+			previousValue = nil
+		}
+
+		var currentValue interface{}
+		if itemInput.CurrentValue != nil {
+			currentValue = *itemInput.CurrentValue
+		} else {
+			currentValue = nil
+		}
+
+		var qty interface{}
+		if itemInput.Qty != nil {
+			qty = *itemInput.Qty
+		} else {
+			qty = nil
+		}
+
+		var rateStr interface{}
+		if itemInput.Rate != nil {
+			rateStr = *itemInput.Rate
+		} else {
+			rateStr = nil
+		}
+
+		// Always use status 1 (active) when creating invoice items
+		itemStatus := "1"
+		_, err = tx.Exec("INSERT INTO invoice_items (invoice_id, item_id, item_name, previous_value, current_value, qty, rate, total, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+			req.ID, itemInput.ItemID, item.Name, previousValue, currentValue, qty, rateStr, total, itemStatus)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create invoice item: %v", err)
+		}
+	}
+
+	// Calculate splits (convert UpdateInvoiceRequest to CreateInvoiceRequest for calculation)
+	createReq := CreateInvoiceRequest{
+		InvoiceNo:   req.InvoiceNo,
+		SalesDate:   req.SalesDate,
+		DueDate:     req.DueDate,
+		UnitID:      req.UnitID,
+		PeopleID:    req.PeopleID,
+		ARAccountID: req.ARAccountID,
+		Amount:      req.Amount,
+		Description: req.Description,
+		Reference:   req.Reference,
+		Status:      req.Status,
+		BuildingID:  req.BuildingID,
+		Items:       req.Items,
+	}
+
+	splitPreviews, err := s.CalculateSplitsForInvoice(createReq, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to calculate splits: %v", err)
+	}
+
+	// Recreate splits within transaction
+	for _, preview := range splitPreviews {
+		var peopleIDSplit interface{}
+		if preview.PeopleID != nil {
+			peopleIDSplit = *preview.PeopleID
+		} else {
+			peopleIDSplit = nil
+		}
+
+		var debit interface{}
+		if preview.Debit != nil {
+			debit = *preview.Debit
+		} else {
+			debit = nil
+		}
+
+		var credit interface{}
+		if preview.Credit != nil {
+			credit = *preview.Credit
+		} else {
+			credit = nil
+		}
+
+		// Always set status to "1" (active) when creating splits
+		_, err = tx.Exec("INSERT INTO splits (transaction_id, account_id, people_id, debit, credit, status) VALUES (?, ?, ?, ?, ?, ?)",
+			existingInvoice.TransactionID, preview.AccountID, peopleIDSplit, debit, credit, "1")
+		if err != nil {
+			return nil, fmt.Errorf("failed to create split: %v", err)
+		}
+	}
+
+	// Commit transaction
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %v", err)
+	}
+	committed = true
+
+	// Fetch updated records after successful commit
+	updatedTransaction, err := s.transactionRepo.GetByID(existingInvoice.TransactionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch transaction: %v", err)
+	}
+
+	updatedInvoice, err := s.invoiceRepo.GetByID(req.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch invoice: %v", err)
+	}
+
+	// Get only active splits (status='1')
+	updatedSplits, err := s.splitRepo.GetByTransactionID(existingInvoice.TransactionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch splits: %v", err)
+	}
+	// Filter to only active splits
+	activeSplits := []splits.Split{}
+	for _, split := range updatedSplits {
+		if split.Status == "1" {
+			activeSplits = append(activeSplits, split)
+		}
+	}
+
+	// Get only active invoice items (status='1')
+	updatedInvoiceItems, err := s.invoiceItemRepo.GetByInvoiceID(req.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch invoice items: %v", err)
+	}
+	// Filter to only active items
+	activeItems := []invoice_items.InvoiceItem{}
+	for _, item := range updatedInvoiceItems {
+		if item.Status == "1" {
+			activeItems = append(activeItems, item)
+		}
+	}
+
+	return &InvoiceResponse{
+		Invoice:     updatedInvoice,
+		Items:       activeItems,
+		Splits:      activeSplits,
+		Transaction: updatedTransaction,
 	}, nil
 }

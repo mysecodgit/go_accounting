@@ -7,6 +7,7 @@ import (
 
 type TransactionRepository interface {
 	Create(transaction Transaction) (Transaction, error)
+	Update(transaction Transaction) (Transaction, error)
 	GetByID(id int) (Transaction, error)
 	GetByBuildingID(buildingID int) ([]Transaction, error)
 }
@@ -36,6 +37,20 @@ func (r *transactionRepo) Create(transaction Transaction) (Transaction, error) {
 
 	id, _ := result.LastInsertId()
 	transaction.ID = int(id)
+
+	err = r.db.QueryRow("SELECT id, type, transaction_date, memo, status, building_id, user_id, unit_id, created_at, updated_at FROM transactions WHERE id = ?", transaction.ID).
+		Scan(&transaction.ID, &transaction.Type, &transaction.TransactionDate, &transaction.Memo, &transaction.Status, &transaction.BuildingID, &transaction.UserID, &transaction.UnitID, &transaction.CreatedAt, &transaction.UpdatedAt)
+
+	return transaction, err
+}
+
+func (r *transactionRepo) Update(transaction Transaction) (Transaction, error) {
+	_, err := r.db.Exec("UPDATE transactions SET type = ?, transaction_date = ?, memo = ? WHERE id = ?",
+		transaction.Type, transaction.TransactionDate, transaction.Memo, transaction.ID)
+
+	if err != nil {
+		return transaction, err
+	}
 
 	err = r.db.QueryRow("SELECT id, type, transaction_date, memo, status, building_id, user_id, unit_id, created_at, updated_at FROM transactions WHERE id = ?", transaction.ID).
 		Scan(&transaction.ID, &transaction.Type, &transaction.TransactionDate, &transaction.Memo, &transaction.Status, &transaction.BuildingID, &transaction.UserID, &transaction.UnitID, &transaction.CreatedAt, &transaction.UpdatedAt)

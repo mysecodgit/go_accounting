@@ -121,9 +121,14 @@ func (h *InvoiceHandler) GetInvoices(c *gin.Context) {
 	c.JSON(http.StatusOK, invoices)
 }
 
-// GET /invoices/:id
+// GET /invoices/:id or /buildings/:id/invoices/:invoiceId
 func (h *InvoiceHandler) GetInvoice(c *gin.Context) {
-	idStr := c.Param("id")
+	// Try invoiceId first (for building-scoped routes), then id (for legacy routes)
+	idStr := c.Param("invoiceId")
+	if idStr == "" {
+		idStr = c.Param("id")
+	}
+	
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
@@ -136,6 +141,84 @@ func (h *InvoiceHandler) GetInvoice(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, invoice)
+	// Get invoice items and splits for full details
+	invoiceItems, _ := h.service.GetInvoiceItemRepo().GetByInvoiceID(id)
+	splits, _ := h.service.GetSplitRepo().GetByTransactionID(invoice.TransactionID)
+	transaction, _ := h.service.GetTransactionRepo().GetByID(invoice.TransactionID)
+
+	response := gin.H{
+		"invoice":     invoice,
+		"items":       invoiceItems,
+		"splits":      splits,
+		"transaction": transaction,
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// PUT /invoices/:id or /buildings/:id/invoices/:invoiceId
+func (h *InvoiceHandler) UpdateInvoice(c *gin.Context) {
+	var req UpdateInvoiceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+		return
+	}
+
+	// Get invoice ID from route parameter (could be "id" or "invoiceId" depending on route)
+	invoiceIDStr := c.Param("invoiceId")
+	if invoiceIDStr == "" {
+		invoiceIDStr = c.Param("id")
+	}
+	
+	id, err := strconv.Atoi(invoiceIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Invoice ID"})
+		return
+	}
+	req.ID = id
+
+	// Get building_id from route if building-scoped
+	buildingIDStr := c.Param("id") // This is the building ID in building-scoped routes
+	if buildingIDStr != "" {
+		buildingID, err := strconv.Atoi(buildingIDStr)
+		if err == nil {
+			req.BuildingID = buildingID
+		}
+	}
+
+	// If building ID not found in route, try query parameter
+	if req.BuildingID == 0 {
+		buildingIDStr = c.Query("building_id")
+		if buildingIDStr != "" {
+			buildingID, err := strconv.Atoi(buildingIDStr)
+			if err == nil {
+				req.BuildingID = buildingID
+			}
+		}
+	}
+
+	// Get user ID from context or header
+	userIDStr := c.GetHeader("User-ID")
+	if userIDStr == "" {
+		userIDStr = c.Query("user_id")
+	}
+	if userIDStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "User ID is required"})
+		return
+	}
+
+	userID, err := strconv.Atoi(userIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid User ID"})
+		return
+	}
+
+	response, err := h.service.UpdateInvoice(req, userID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 

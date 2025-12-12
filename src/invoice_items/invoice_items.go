@@ -10,7 +10,7 @@ type InvoiceItem struct {
 	Qty           *float64 `json:"qty"`
 	Rate          *string `json:"rate"`
 	Total         float64 `json:"total"`
-	Status        int     `json:"status"`
+	Status        string  `json:"status"`
 	CreatedAt     string  `json:"created_at"`
 	UpdatedAt     string  `json:"updated_at"`
 }
@@ -34,7 +34,7 @@ func (ii *InvoiceItem) Validate() map[string]string {
 		errors["total"] = "Total must be greater than 0"
 	}
 
-	if ii.Status != 0 && ii.Status != 1 {
+	if ii.Status != "0" && ii.Status != "1" {
 		errors["status"] = "Status must be 0 or 1"
 	}
 

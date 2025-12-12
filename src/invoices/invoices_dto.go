@@ -46,6 +46,22 @@ type InvoicePreviewResponse struct {
 	IsBalanced   bool                 `json:"is_balanced"`
 }
 
+type UpdateInvoiceRequest struct {
+	ID           int                `json:"id"`
+	InvoiceNo    int                `json:"invoice_no"`
+	SalesDate    string             `json:"sales_date"`
+	DueDate      string             `json:"due_date"`
+	UnitID       *int               `json:"unit_id"`
+	PeopleID     *int               `json:"people_id"`
+	ARAccountID  *int               `json:"ar_account_id"`
+	Amount       float64            `json:"amount"`
+	Description  string             `json:"description"`
+	Reference    string             `json:"refrence"`
+	Status       *int               `json:"status"` // Use pointer to distinguish between not provided (nil) and explicitly set to 0
+	BuildingID   int                `json:"building_id"`
+	Items        []InvoiceItemInput `json:"items"`
+}
+
 type InvoiceResponse struct {
 	Invoice     Invoice                    `json:"invoice"`
 	Items       []invoice_items.InvoiceItem `json:"items"`
