@@ -21,8 +21,8 @@ func NewCreditMemoRepository(db *sql.DB) CreditMemoRepository {
 }
 
 func (r *creditMemoRepo) Create(creditMemo CreditMemo) (CreditMemo, error) {
-	result, err := r.db.Exec("INSERT INTO credit_memo (transaction_id, date, user_id, deposit_to, liability_account, people_id, building_id, unit_id, amount, description, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		creditMemo.TransactionID, creditMemo.Date, creditMemo.UserID, creditMemo.DepositTo, creditMemo.LiabilityAccount, creditMemo.PeopleID, creditMemo.BuildingID, creditMemo.UnitID, creditMemo.Amount, creditMemo.Description, creditMemo.Status)
+	result, err := r.db.Exec("INSERT INTO credit_memo (transaction_id, reference, date, user_id, deposit_to, liability_account, people_id, building_id, unit_id, amount, description, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		creditMemo.TransactionID, creditMemo.Reference, creditMemo.Date, creditMemo.UserID, creditMemo.DepositTo, creditMemo.LiabilityAccount, creditMemo.PeopleID, creditMemo.BuildingID, creditMemo.UnitID, creditMemo.Amount, creditMemo.Description, creditMemo.Status)
 
 	if err != nil {
 		return creditMemo, err
@@ -31,22 +31,22 @@ func (r *creditMemoRepo) Create(creditMemo CreditMemo) (CreditMemo, error) {
 	id, _ := result.LastInsertId()
 	creditMemo.ID = int(id)
 
-	err = r.db.QueryRow("SELECT id, transaction_id, date, user_id, deposit_to, liability_account, people_id, building_id, unit_id, amount, description, status, created_at, updated_at FROM credit_memo WHERE id = ?", creditMemo.ID).
-		Scan(&creditMemo.ID, &creditMemo.TransactionID, &creditMemo.Date, &creditMemo.UserID, &creditMemo.DepositTo, &creditMemo.LiabilityAccount, &creditMemo.PeopleID, &creditMemo.BuildingID, &creditMemo.UnitID, &creditMemo.Amount, &creditMemo.Description, &creditMemo.Status, &creditMemo.CreatedAt, &creditMemo.UpdatedAt)
+	err = r.db.QueryRow("SELECT id, transaction_id, reference, date, user_id, deposit_to, liability_account, people_id, building_id, unit_id, amount, description, status, created_at, updated_at FROM credit_memo WHERE id = ?", creditMemo.ID).
+		Scan(&creditMemo.ID, &creditMemo.TransactionID, &creditMemo.Reference, &creditMemo.Date, &creditMemo.UserID, &creditMemo.DepositTo, &creditMemo.LiabilityAccount, &creditMemo.PeopleID, &creditMemo.BuildingID, &creditMemo.UnitID, &creditMemo.Amount, &creditMemo.Description, &creditMemo.Status, &creditMemo.CreatedAt, &creditMemo.UpdatedAt)
 
 	return creditMemo, err
 }
 
 func (r *creditMemoRepo) Update(creditMemo CreditMemo) (CreditMemo, error) {
-	_, err := r.db.Exec("UPDATE credit_memo SET date = ?, deposit_to = ?, liability_account = ?, people_id = ?, unit_id = ?, amount = ?, description = ? WHERE id = ?",
-		creditMemo.Date, creditMemo.DepositTo, creditMemo.LiabilityAccount, creditMemo.PeopleID, creditMemo.UnitID, creditMemo.Amount, creditMemo.Description, creditMemo.ID)
+	_, err := r.db.Exec("UPDATE credit_memo SET reference = ?, date = ?, deposit_to = ?, liability_account = ?, people_id = ?, unit_id = ?, amount = ?, description = ? WHERE id = ?",
+		creditMemo.Reference, creditMemo.Date, creditMemo.DepositTo, creditMemo.LiabilityAccount, creditMemo.PeopleID, creditMemo.UnitID, creditMemo.Amount, creditMemo.Description, creditMemo.ID)
 
 	if err != nil {
 		return creditMemo, err
 	}
 
-	err = r.db.QueryRow("SELECT id, transaction_id, date, user_id, deposit_to, liability_account, people_id, building_id, unit_id, amount, description, status, created_at, updated_at FROM credit_memo WHERE id = ?", creditMemo.ID).
-		Scan(&creditMemo.ID, &creditMemo.TransactionID, &creditMemo.Date, &creditMemo.UserID, &creditMemo.DepositTo, &creditMemo.LiabilityAccount, &creditMemo.PeopleID, &creditMemo.BuildingID, &creditMemo.UnitID, &creditMemo.Amount, &creditMemo.Description, &creditMemo.Status, &creditMemo.CreatedAt, &creditMemo.UpdatedAt)
+	err = r.db.QueryRow("SELECT id, transaction_id, reference, date, user_id, deposit_to, liability_account, people_id, building_id, unit_id, amount, description, status, created_at, updated_at FROM credit_memo WHERE id = ?", creditMemo.ID).
+		Scan(&creditMemo.ID, &creditMemo.TransactionID, &creditMemo.Reference, &creditMemo.Date, &creditMemo.UserID, &creditMemo.DepositTo, &creditMemo.LiabilityAccount, &creditMemo.PeopleID, &creditMemo.BuildingID, &creditMemo.UnitID, &creditMemo.Amount, &creditMemo.Description, &creditMemo.Status, &creditMemo.CreatedAt, &creditMemo.UpdatedAt)
 
 	return creditMemo, err
 }
@@ -64,7 +64,7 @@ func (r *creditMemoRepo) GetByID(id int) (CreditMemo, error) {
 }
 
 func (r *creditMemoRepo) GetByBuildingID(buildingID int) ([]CreditMemo, error) {
-	rows, err := r.db.Query("SELECT id, transaction_id, date, user_id, deposit_to, liability_account, people_id, building_id, unit_id, amount, description, status, created_at, updated_at FROM credit_memo WHERE building_id = ? ORDER BY created_at DESC", buildingID)
+	rows, err := r.db.Query("SELECT id, transaction_id, reference, date, user_id, deposit_to, liability_account, people_id, building_id, unit_id, amount, description, status, created_at, updated_at FROM credit_memo WHERE building_id = ? ORDER BY created_at DESC", buildingID)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +73,7 @@ func (r *creditMemoRepo) GetByBuildingID(buildingID int) ([]CreditMemo, error) {
 	creditMemos := []CreditMemo{}
 	for rows.Next() {
 		var creditMemo CreditMemo
-		err := rows.Scan(&creditMemo.ID, &creditMemo.TransactionID, &creditMemo.Date, &creditMemo.UserID, &creditMemo.DepositTo, &creditMemo.LiabilityAccount, &creditMemo.PeopleID, &creditMemo.BuildingID, &creditMemo.UnitID, &creditMemo.Amount, &creditMemo.Description, &creditMemo.Status, &creditMemo.CreatedAt, &creditMemo.UpdatedAt)
+		err := rows.Scan(&creditMemo.ID, &creditMemo.TransactionID, &creditMemo.Reference, &creditMemo.Date, &creditMemo.UserID, &creditMemo.DepositTo, &creditMemo.LiabilityAccount, &creditMemo.PeopleID, &creditMemo.BuildingID, &creditMemo.UnitID, &creditMemo.Amount, &creditMemo.Description, &creditMemo.Status, &creditMemo.CreatedAt, &creditMemo.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}

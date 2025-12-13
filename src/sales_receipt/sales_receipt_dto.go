@@ -15,7 +15,7 @@ type ReceiptItemInput struct {
 }
 
 type CreateSalesReceiptRequest struct {
-	ReceiptNo   int                `json:"receipt_no"`
+	ReceiptNo   string             `json:"receipt_no"`
 	ReceiptDate string             `json:"receipt_date"`
 	UnitID      *int               `json:"unit_id"`
 	PeopleID    *int               `json:"people_id"`
@@ -46,7 +46,7 @@ type SalesReceiptPreviewResponse struct {
 
 type UpdateSalesReceiptRequest struct {
 	ID          int                `json:"id"`
-	ReceiptNo   int                `json:"receipt_no"`
+	ReceiptNo   string             `json:"receipt_no"`
 	ReceiptDate string             `json:"receipt_date"`
 	UnitID      *int               `json:"unit_id"`
 	PeopleID    *int               `json:"people_id"`

@@ -8,6 +8,7 @@ import (
 )
 
 type CreateInvoicePaymentRequest struct {
+	Reference string  `json:"reference"`
 	Date      string  `json:"date"`
 	InvoiceID int     `json:"invoice_id"`
 	AccountID int     `json:"account_id"` // Asset account (cash/bank)
@@ -17,6 +18,7 @@ type CreateInvoicePaymentRequest struct {
 }
 
 type UpdateInvoicePaymentRequest struct {
+	Reference string  `json:"reference"`
 	Date      string  `json:"date"`
 	AccountID int     `json:"account_id"` // Asset account (cash/bank)
 	Amount    float64 `json:"amount"`

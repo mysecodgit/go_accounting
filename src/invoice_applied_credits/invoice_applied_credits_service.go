@@ -159,11 +159,11 @@ func (s *InvoiceAppliedCreditService) PreviewApplyCredit(req CreateInvoiceApplie
 
 	// Debit: Liability account (reduces liability)
 	debitAmount := req.Amount
-	peopleIDPtr := &creditMemo.PeopleID
+	invoicePeopleIDPtr := invoice.PeopleID
 	splits = append(splits, SplitPreview{
 		AccountID:   creditMemo.LiabilityAccount,
 		AccountName: liabilityAccount.AccountName,
-		PeopleID:    peopleIDPtr,
+		PeopleID:    invoicePeopleIDPtr, // people_id is set for both splits
 		Debit:       &debitAmount,
 		Credit:      nil,
 		Status:      "1",
@@ -171,11 +171,10 @@ func (s *InvoiceAppliedCreditService) PreviewApplyCredit(req CreateInvoiceApplie
 
 	// Credit: A/R account (reduces receivable)
 	creditAmount := req.Amount
-	invoicePeopleIDPtr := invoice.PeopleID
 	splits = append(splits, SplitPreview{
 		AccountID:   *invoice.ARAccountID,
 		AccountName: arAccount.AccountName,
-		PeopleID:    invoicePeopleIDPtr,
+		PeopleID:    invoicePeopleIDPtr, // people_id is set for both splits
 		Debit:       nil,
 		Credit:      &creditAmount,
 		Status:      "1",
@@ -263,8 +262,8 @@ func (s *InvoiceAppliedCreditService) ApplyCreditToInvoice(req CreateInvoiceAppl
 
 	// Create transaction record
 	transactionStatus := "1"
-	result, err := tx.Exec("INSERT INTO transactions (type, transaction_date, memo, status, building_id, user_id, unit_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		"credit applied", req.Date, req.Description, transactionStatus, invoice.BuildingID, userID, invoice.UnitID)
+	result, err := tx.Exec("INSERT INTO transactions (type, transaction_date, transaction_number, memo, status, building_id, user_id, unit_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+		"credit applied", req.Date, invoice.InvoiceNo, req.Description, transactionStatus, invoice.BuildingID, userID, invoice.UnitID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create transaction: %v", err)
 	}
@@ -299,20 +298,20 @@ func (s *InvoiceAppliedCreditService) ApplyCreditToInvoice(req CreateInvoiceAppl
 	}
 
 	// Create splits: Debit liability account, Credit A/R account
+	// people_id is set for both splits
 	// Debit: Liability account (reduces liability)
 	debitAmount := req.Amount
-	peopleIDPtr := &creditMemo.PeopleID
+	invoicePeopleIDPtr := invoice.PeopleID
 	_, err = tx.Exec("INSERT INTO splits (transaction_id, account_id, people_id, debit, credit, status) VALUES (?, ?, ?, ?, ?, ?)",
-		transactionID, creditMemo.LiabilityAccount, peopleIDPtr, debitAmount, nil, "1")
+		transactionID, creditMemo.LiabilityAccount, invoicePeopleIDPtr, debitAmount, nil, "1") // Liability account: people_id is set
 	if err != nil {
 		return nil, fmt.Errorf("failed to create debit split: %v", err)
 	}
 
 	// Credit: A/R account (reduces receivable)
 	creditAmount := req.Amount
-	invoicePeopleIDPtr := invoice.PeopleID
 	_, err = tx.Exec("INSERT INTO splits (transaction_id, account_id, people_id, debit, credit, status) VALUES (?, ?, ?, ?, ?, ?)",
-		transactionID, *invoice.ARAccountID, invoicePeopleIDPtr, nil, creditAmount, "1")
+		transactionID, *invoice.ARAccountID, invoicePeopleIDPtr, nil, creditAmount, "1") // AR account: people_id is set
 	if err != nil {
 		return nil, fmt.Errorf("failed to create credit split: %v", err)
 	}

@@ -175,8 +175,8 @@ func (s *CreditMemoService) CreateCreditMemo(req CreateCreditMemoRequest, userID
 
 	// Create transaction record - always use status "1" (active) when creating
 	transactionStatus := "1"
-	result, err := tx.Exec("INSERT INTO transactions (type, transaction_date, memo, status, building_id, user_id, unit_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		"credit memo", req.Date, req.Description, transactionStatus, req.BuildingID, userID, req.UnitID)
+	result, err := tx.Exec("INSERT INTO transactions (type, transaction_date, transaction_number, memo, status, building_id, user_id, unit_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+		"credit memo", req.Date, req.Reference, req.Description, transactionStatus, req.BuildingID, userID, req.UnitID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create transaction: %v", err)
 	}
@@ -188,8 +188,8 @@ func (s *CreditMemoService) CreateCreditMemo(req CreateCreditMemoRequest, userID
 
 	// Create credit memo - always use status "1" (active) when creating
 	creditMemoStatus := "1"
-	result, err = tx.Exec("INSERT INTO credit_memo (transaction_id, date, user_id, deposit_to, liability_account, people_id, building_id, unit_id, amount, description, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		transactionID, req.Date, userID, req.DepositTo, req.LiabilityAccount, req.PeopleID, req.BuildingID, req.UnitID, req.Amount, req.Description, creditMemoStatus)
+	result, err = tx.Exec("INSERT INTO credit_memo (transaction_id, reference, date, user_id, deposit_to, liability_account, people_id, building_id, unit_id, amount, description, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		transactionID, req.Reference, req.Date, userID, req.DepositTo, req.LiabilityAccount, req.PeopleID, req.BuildingID, req.UnitID, req.Amount, req.Description, creditMemoStatus)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create credit memo: %v", err)
 	}
@@ -297,15 +297,15 @@ func (s *CreditMemoService) UpdateCreditMemo(req UpdateCreditMemoRequest, userID
 	}()
 
 	// Update transaction
-	_, err = tx.Exec("UPDATE transactions SET transaction_date = ?, memo = ?, unit_id = ? WHERE id = ?",
-		req.Date, req.Description, req.UnitID, existingCreditMemo.TransactionID)
+	_, err = tx.Exec("UPDATE transactions SET transaction_date = ?, transaction_number = ?, memo = ?, unit_id = ? WHERE id = ?",
+		req.Date, req.Reference, req.Description, req.UnitID, existingCreditMemo.TransactionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update transaction: %v", err)
 	}
 
 	// Update credit memo
-	_, err = tx.Exec("UPDATE credit_memo SET date = ?, deposit_to = ?, liability_account = ?, people_id = ?, unit_id = ?, amount = ?, description = ? WHERE id = ?",
-		req.Date, req.DepositTo, req.LiabilityAccount, req.PeopleID, req.UnitID, req.Amount, req.Description, req.ID)
+	_, err = tx.Exec("UPDATE credit_memo SET reference = ?, date = ?, deposit_to = ?, liability_account = ?, people_id = ?, unit_id = ?, amount = ?, description = ? WHERE id = ?",
+		req.Reference, req.Date, req.DepositTo, req.LiabilityAccount, req.PeopleID, req.UnitID, req.Amount, req.Description, req.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update credit memo: %v", err)
 	}

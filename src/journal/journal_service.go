@@ -181,8 +181,8 @@ func (s *JournalService) CreateJournal(req CreateJournalRequest, userID int) (*J
 	if req.Memo != nil {
 		memo = *req.Memo
 	}
-	result, err := tx.Exec("INSERT INTO transactions (type, transaction_date, memo, status, building_id, user_id, unit_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		"journal", req.JournalDate, memo, transactionStatus, req.BuildingID, userID, nil)
+	result, err := tx.Exec("INSERT INTO transactions (type, transaction_date, transaction_number, memo, status, building_id, user_id, unit_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+		"journal", req.JournalDate, req.Reference, memo, transactionStatus, req.BuildingID, userID, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create transaction: %v", err)
 	}
@@ -200,8 +200,8 @@ func (s *JournalService) CreateJournal(req CreateJournalRequest, userID int) (*J
 		memoInterface = nil
 	}
 
-	result, err = tx.Exec("INSERT INTO journal (transaction_id, journal_date, building_id, memo, total_amount) VALUES (?, ?, ?, ?, ?)",
-		transactionID, req.JournalDate, req.BuildingID, memoInterface, req.TotalAmount)
+	result, err = tx.Exec("INSERT INTO journal (transaction_id, reference, journal_date, building_id, memo, total_amount) VALUES (?, ?, ?, ?, ?, ?)",
+		transactionID, req.Reference, req.JournalDate, req.BuildingID, memoInterface, req.TotalAmount)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create journal: %v", err)
 	}
@@ -363,8 +363,8 @@ func (s *JournalService) UpdateJournal(req UpdateJournalRequest, userID int) (*J
 	if req.Memo != nil {
 		memo = *req.Memo
 	}
-	_, err = tx.Exec("UPDATE transactions SET transaction_date = ?, memo = ? WHERE id = ?",
-		req.JournalDate, memo, existingJournal.TransactionID)
+	_, err = tx.Exec("UPDATE transactions SET transaction_date = ?, transaction_number = ?, memo = ? WHERE id = ?",
+		req.JournalDate, req.Reference, memo, existingJournal.TransactionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update transaction: %v", err)
 	}
@@ -377,8 +377,8 @@ func (s *JournalService) UpdateJournal(req UpdateJournalRequest, userID int) (*J
 		memoInterface = nil
 	}
 
-	_, err = tx.Exec("UPDATE journal SET journal_date = ?, memo = ?, total_amount = ? WHERE id = ?",
-		req.JournalDate, memoInterface, req.TotalAmount, req.ID)
+	_, err = tx.Exec("UPDATE journal SET reference = ?, journal_date = ?, memo = ?, total_amount = ? WHERE id = ?",
+		req.Reference, req.JournalDate, memoInterface, req.TotalAmount, req.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update journal: %v", err)
 	}

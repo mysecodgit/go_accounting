@@ -11,8 +11,8 @@ type InvoiceRepository interface {
 	GetByID(id int) (Invoice, error)
 	GetByBuildingID(buildingID int) ([]Invoice, error)
 	GetByBuildingIDWithTotals(buildingID int) ([]InvoiceListItem, error)
-	GetNextInvoiceNo(buildingID int) (int, error)
-	CheckDuplicateInvoiceNo(buildingID int, invoiceNo int, excludeID int) (bool, error)
+	GetNextInvoiceNo(buildingID int) (string, error)
+	CheckDuplicateInvoiceNo(buildingID int, invoiceNo string, excludeID int) (bool, error)
 }
 
 type invoiceRepo struct {
@@ -52,8 +52,8 @@ func (r *invoiceRepo) Create(invoice Invoice) (Invoice, error) {
 		arAccountID = nil
 	}
 
-	result, err := r.db.Exec("INSERT INTO invoices (invoice_no, transaction_id, sales_date, due_date, ar_account_id, unit_id, people_id, user_id, amount, description, refrence, cancel_reason, status, building_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		invoice.InvoiceNo, invoice.TransactionID, invoice.SalesDate, invoice.DueDate, arAccountID, unitID, peopleID, invoice.UserID, invoice.Amount, invoice.Description, invoice.Reference, cancelReason, invoice.Status, invoice.BuildingID)
+	result, err := r.db.Exec("INSERT INTO invoices (invoice_no, transaction_id, sales_date, due_date, ar_account_id, unit_id, people_id, user_id, amount, description, cancel_reason, status, building_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		invoice.InvoiceNo, invoice.TransactionID, invoice.SalesDate, invoice.DueDate, arAccountID, unitID, peopleID, invoice.UserID, invoice.Amount, invoice.Description, cancelReason, invoice.Status, invoice.BuildingID)
 
 	if err != nil {
 		return invoice, err
@@ -62,8 +62,8 @@ func (r *invoiceRepo) Create(invoice Invoice) (Invoice, error) {
 	id, _ := result.LastInsertId()
 	invoice.ID = int(id)
 
-	err = r.db.QueryRow("SELECT id, invoice_no, transaction_id, sales_date, due_date, ar_account_id, unit_id, people_id, user_id, amount, description, refrence, cancel_reason, status, building_id, createdAt, updatedAt FROM invoices WHERE id = ?", invoice.ID).
-		Scan(&invoice.ID, &invoice.InvoiceNo, &invoice.TransactionID, &invoice.SalesDate, &invoice.DueDate, &invoice.ARAccountID, &invoice.UnitID, &invoice.PeopleID, &invoice.UserID, &invoice.Amount, &invoice.Description, &invoice.Reference, &invoice.CancelReason, &invoice.Status, &invoice.BuildingID, &invoice.CreatedAt, &invoice.UpdatedAt)
+	err = r.db.QueryRow("SELECT id, invoice_no, transaction_id, sales_date, due_date, ar_account_id, unit_id, people_id, user_id, amount, description, cancel_reason, status, building_id, createdAt, updatedAt FROM invoices WHERE id = ?", invoice.ID).
+		Scan(&invoice.ID, &invoice.InvoiceNo, &invoice.TransactionID, &invoice.SalesDate, &invoice.DueDate, &invoice.ARAccountID, &invoice.UnitID, &invoice.PeopleID, &invoice.UserID, &invoice.Amount, &invoice.Description, &invoice.CancelReason, &invoice.Status, &invoice.BuildingID, &invoice.CreatedAt, &invoice.UpdatedAt)
 
 	return invoice, err
 }
@@ -97,23 +97,23 @@ func (r *invoiceRepo) Update(invoice Invoice) (Invoice, error) {
 		arAccountID = nil
 	}
 
-	_, err := r.db.Exec("UPDATE invoices SET invoice_no = ?, sales_date = ?, due_date = ?, ar_account_id = ?, unit_id = ?, people_id = ?, amount = ?, description = ?, refrence = ?, cancel_reason = ? WHERE id = ?",
-		invoice.InvoiceNo, invoice.SalesDate, invoice.DueDate, arAccountID, unitID, peopleID, invoice.Amount, invoice.Description, invoice.Reference, cancelReason, invoice.ID)
+	_, err := r.db.Exec("UPDATE invoices SET invoice_no = ?, sales_date = ?, due_date = ?, ar_account_id = ?, unit_id = ?, people_id = ?, amount = ?, description = ?, cancel_reason = ? WHERE id = ?",
+		invoice.InvoiceNo, invoice.SalesDate, invoice.DueDate, arAccountID, unitID, peopleID, invoice.Amount, invoice.Description, cancelReason, invoice.ID)
 
 	if err != nil {
 		return invoice, err
 	}
 
-	err = r.db.QueryRow("SELECT id, invoice_no, transaction_id, sales_date, due_date, ar_account_id, unit_id, people_id, user_id, amount, description, refrence, cancel_reason, status, building_id, createdAt, updatedAt FROM invoices WHERE id = ?", invoice.ID).
-		Scan(&invoice.ID, &invoice.InvoiceNo, &invoice.TransactionID, &invoice.SalesDate, &invoice.DueDate, &invoice.ARAccountID, &invoice.UnitID, &invoice.PeopleID, &invoice.UserID, &invoice.Amount, &invoice.Description, &invoice.Reference, &invoice.CancelReason, &invoice.Status, &invoice.BuildingID, &invoice.CreatedAt, &invoice.UpdatedAt)
+	err = r.db.QueryRow("SELECT id, invoice_no, transaction_id, sales_date, due_date, ar_account_id, unit_id, people_id, user_id, amount, description, cancel_reason, status, building_id, createdAt, updatedAt FROM invoices WHERE id = ?", invoice.ID).
+		Scan(&invoice.ID, &invoice.InvoiceNo, &invoice.TransactionID, &invoice.SalesDate, &invoice.DueDate, &invoice.ARAccountID, &invoice.UnitID, &invoice.PeopleID, &invoice.UserID, &invoice.Amount, &invoice.Description, &invoice.CancelReason, &invoice.Status, &invoice.BuildingID, &invoice.CreatedAt, &invoice.UpdatedAt)
 
 	return invoice, err
 }
 
 func (r *invoiceRepo) GetByID(id int) (Invoice, error) {
 	var invoice Invoice
-	err := r.db.QueryRow("SELECT id, invoice_no, transaction_id, sales_date, due_date, ar_account_id, unit_id, people_id, user_id, amount, description, refrence, cancel_reason, status, building_id, createdAt, updatedAt FROM invoices WHERE id = ?", id).
-		Scan(&invoice.ID, &invoice.InvoiceNo, &invoice.TransactionID, &invoice.SalesDate, &invoice.DueDate, &invoice.ARAccountID, &invoice.UnitID, &invoice.PeopleID, &invoice.UserID, &invoice.Amount, &invoice.Description, &invoice.Reference, &invoice.CancelReason, &invoice.Status, &invoice.BuildingID, &invoice.CreatedAt, &invoice.UpdatedAt)
+	err := r.db.QueryRow("SELECT id, invoice_no, transaction_id, sales_date, due_date, ar_account_id, unit_id, people_id, user_id, amount, description, cancel_reason, status, building_id, createdAt, updatedAt FROM invoices WHERE id = ?", id).
+		Scan(&invoice.ID, &invoice.InvoiceNo, &invoice.TransactionID, &invoice.SalesDate, &invoice.DueDate, &invoice.ARAccountID, &invoice.UnitID, &invoice.PeopleID, &invoice.UserID, &invoice.Amount, &invoice.Description, &invoice.CancelReason, &invoice.Status, &invoice.BuildingID, &invoice.CreatedAt, &invoice.UpdatedAt)
 
 	if err == sql.ErrNoRows {
 		return invoice, fmt.Errorf("invoice not found")
@@ -132,7 +132,7 @@ func (r *invoiceRepo) GetByBuildingID(buildingID int) ([]Invoice, error) {
 	invoices := []Invoice{}
 	for rows.Next() {
 		var invoice Invoice
-		err := rows.Scan(&invoice.ID, &invoice.InvoiceNo, &invoice.TransactionID, &invoice.SalesDate, &invoice.DueDate, &invoice.ARAccountID, &invoice.UnitID, &invoice.PeopleID, &invoice.UserID, &invoice.Amount, &invoice.Description, &invoice.Reference, &invoice.CancelReason, &invoice.Status, &invoice.BuildingID, &invoice.CreatedAt, &invoice.UpdatedAt)
+		err := rows.Scan(&invoice.ID, &invoice.InvoiceNo, &invoice.TransactionID, &invoice.SalesDate, &invoice.DueDate, &invoice.ARAccountID, &invoice.UnitID, &invoice.PeopleID, &invoice.UserID, &invoice.Amount, &invoice.Description, &invoice.CancelReason, &invoice.Status, &invoice.BuildingID, &invoice.CreatedAt, &invoice.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -142,19 +142,22 @@ func (r *invoiceRepo) GetByBuildingID(buildingID int) ([]Invoice, error) {
 	return invoices, nil
 }
 
-func (r *invoiceRepo) GetNextInvoiceNo(buildingID int) (int, error) {
-	var maxNo sql.NullInt64
-	err := r.db.QueryRow("SELECT MAX(invoice_no) FROM invoices WHERE building_id = ?", buildingID).Scan(&maxNo)
+func (r *invoiceRepo) GetNextInvoiceNo(buildingID int) (string, error) {
+	var maxNo sql.NullString
+	err := r.db.QueryRow("SELECT MAX(CAST(invoice_no AS UNSIGNED)) FROM invoices WHERE building_id = ? AND invoice_no REGEXP '^[0-9]+$'", buildingID).Scan(&maxNo)
 	if err != nil {
-		return 1, err
+		return "1", err
 	}
 	if maxNo.Valid {
-		return int(maxNo.Int64) + 1, nil
+		// Try to parse as int and increment
+		var nextNum int
+		fmt.Sscanf(maxNo.String, "%d", &nextNum)
+		return fmt.Sprintf("%d", nextNum+1), nil
 	}
-	return 1, nil
+	return "1", nil
 }
 
-func (r *invoiceRepo) CheckDuplicateInvoiceNo(buildingID int, invoiceNo int, excludeID int) (bool, error) {
+func (r *invoiceRepo) CheckDuplicateInvoiceNo(buildingID int, invoiceNo string, excludeID int) (bool, error) {
 	var count int
 	var err error
 
@@ -176,18 +179,20 @@ func (r *invoiceRepo) GetByBuildingIDWithTotals(buildingID int) ([]InvoiceListIt
 		SELECT 
 			i.id, i.invoice_no, i.transaction_id, i.sales_date, i.due_date, 
 			i.ar_account_id, i.unit_id, i.people_id, i.user_id, i.amount, 
-			i.description, i.refrence, i.cancel_reason, i.status, i.building_id, 
+			i.description, i.cancel_reason, i.status, i.building_id, 
 			i.createdAt, i.updatedAt,
-			COALESCE(SUM(CASE WHEN ip.status = '1' THEN ip.amount ELSE 0 END), 0) as paid_amount,
-			COALESCE(SUM(CASE WHEN iac.status = '1' THEN iac.amount ELSE 0 END), 0) as applied_credits_total
+			COALESCE((
+				SELECT SUM(ip.amount) 
+				FROM invoice_payments ip 
+				WHERE ip.invoice_id = i.id AND ip.status = '1'
+			), 0) as paid_amount,
+			COALESCE((
+				SELECT SUM(iac.amount) 
+				FROM invoice_applied_credits iac 
+				WHERE iac.invoice_id = i.id AND iac.status = '1'
+			), 0) as applied_credits_total
 		FROM invoices i
-		LEFT JOIN invoice_payments ip ON i.id = ip.invoice_id
-		LEFT JOIN invoice_applied_credits iac ON i.id = iac.invoice_id
 		WHERE i.building_id = ?
-		GROUP BY i.id, i.invoice_no, i.transaction_id, i.sales_date, i.due_date, 
-			i.ar_account_id, i.unit_id, i.people_id, i.user_id, i.amount, 
-			i.description, i.refrence, i.cancel_reason, i.status, i.building_id, 
-			i.createdAt, i.updatedAt
 		ORDER BY i.createdAt DESC
 	`
 	
@@ -203,7 +208,7 @@ func (r *invoiceRepo) GetByBuildingIDWithTotals(buildingID int) ([]InvoiceListIt
 		err := rows.Scan(
 			&invoice.ID, &invoice.InvoiceNo, &invoice.TransactionID, &invoice.SalesDate, &invoice.DueDate,
 			&invoice.ARAccountID, &invoice.UnitID, &invoice.PeopleID, &invoice.UserID, &invoice.Amount,
-			&invoice.Description, &invoice.Reference, &invoice.CancelReason, &invoice.Status, &invoice.BuildingID,
+			&invoice.Description, &invoice.CancelReason, &invoice.Status, &invoice.BuildingID,
 			&invoice.CreatedAt, &invoice.UpdatedAt,
 			&invoice.PaidAmount, &invoice.AppliedCreditsTotal,
 		)

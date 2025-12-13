@@ -9,8 +9,8 @@ type SalesReceiptRepository interface {
 	Create(receipt SalesReceipt) (SalesReceipt, error)
 	GetByID(id int) (SalesReceipt, error)
 	GetByBuildingID(buildingID int) ([]SalesReceipt, error)
-	GetNextReceiptNo(buildingID int) (int, error)
-	CheckDuplicateReceiptNo(buildingID int, receiptNo int, excludeID int) (bool, error)
+	GetNextReceiptNo(buildingID int) (string, error)
+	CheckDuplicateReceiptNo(buildingID int, receiptNo string, excludeID int) (bool, error)
 	Update(receipt SalesReceipt) (SalesReceipt, error)
 }
 
@@ -92,21 +92,23 @@ func (r *salesReceiptRepo) GetByBuildingID(buildingID int) ([]SalesReceipt, erro
 	return receipts, nil
 }
 
-func (r *salesReceiptRepo) GetNextReceiptNo(buildingID int) (int, error) {
-	var maxNo sql.NullInt64
-	err := r.db.QueryRow("SELECT MAX(receipt_no) FROM sales_receipt WHERE building_id = ?", buildingID).Scan(&maxNo)
+func (r *salesReceiptRepo) GetNextReceiptNo(buildingID int) (string, error) {
+	var maxNo sql.NullString
+	err := r.db.QueryRow("SELECT MAX(CAST(receipt_no AS UNSIGNED)) FROM sales_receipt WHERE building_id = ? AND receipt_no REGEXP '^[0-9]+$'", buildingID).Scan(&maxNo)
 	if err != nil && err != sql.ErrNoRows {
-		return 0, err
+		return "1", err
 	}
 
 	if maxNo.Valid {
-		return int(maxNo.Int64) + 1, nil
+		var nextNum int
+		fmt.Sscanf(maxNo.String, "%d", &nextNum)
+		return fmt.Sprintf("%d", nextNum+1), nil
 	}
 
-	return 1, nil
+	return "1", nil
 }
 
-func (r *salesReceiptRepo) CheckDuplicateReceiptNo(buildingID int, receiptNo int, excludeID int) (bool, error) {
+func (r *salesReceiptRepo) CheckDuplicateReceiptNo(buildingID int, receiptNo string, excludeID int) (bool, error) {
 	var count int
 	query := "SELECT COUNT(*) FROM sales_receipt WHERE building_id = ? AND receipt_no = ?"
 	args := []interface{}{buildingID, receiptNo}

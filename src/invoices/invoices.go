@@ -7,7 +7,7 @@ import (
 
 type Invoice struct {
 	ID            int     `json:"id"`
-	InvoiceNo     int     `json:"invoice_no"`
+	InvoiceNo     string  `json:"invoice_no"`
 	TransactionID int     `json:"transaction_id"`
 	SalesDate     string  `json:"sales_date"`
 	DueDate       string  `json:"due_date"`
@@ -17,7 +17,6 @@ type Invoice struct {
 	UserID        int     `json:"user_id"`
 	Amount        float64 `json:"amount"`
 	Description   string  `json:"description"`
-	Reference     string  `json:"refrence"`
 	CancelReason  *string `json:"cancel_reason"`
 	Status        int     `json:"status"`
 	BuildingID    int     `json:"building_id"`
@@ -28,8 +27,8 @@ type Invoice struct {
 func (i *Invoice) Validate() map[string]string {
 	errors := make(map[string]string)
 
-	if i.InvoiceNo <= 0 {
-		errors["invoice_no"] = "Invoice number must be greater than 0"
+	if strings.TrimSpace(i.InvoiceNo) == "" {
+		errors["invoice_no"] = "Invoice number is required"
 	}
 
 	if i.TransactionID <= 0 {
@@ -76,10 +75,6 @@ func (i *Invoice) Validate() map[string]string {
 
 	if strings.TrimSpace(i.Description) == "" {
 		errors["description"] = "Description cannot be empty"
-	}
-
-	if strings.TrimSpace(i.Reference) == "" {
-		errors["refrence"] = "Reference cannot be empty"
 	}
 
 	if i.BuildingID <= 0 {

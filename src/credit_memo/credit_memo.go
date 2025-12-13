@@ -7,6 +7,7 @@ import (
 type CreditMemo struct {
 	ID               int     `json:"id"`
 	TransactionID    int     `json:"transaction_id"`
+	Reference        string  `json:"reference"`
 	Date             string  `json:"date"`
 	UserID           int     `json:"user_id"`
 	DepositTo        int     `json:"deposit_to"`

@@ -184,8 +184,14 @@ func (s *CheckService) CreateCheck(req CreateCheckRequest, userID int) (*CheckRe
 	if req.Memo != nil {
 		memo = *req.Memo
 	}
-	result, err := tx.Exec("INSERT INTO transactions (type, transaction_date, memo, status, building_id, user_id, unit_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		"check", req.CheckDate, memo, transactionStatus, req.BuildingID, userID, nil)
+	var transactionNumber string
+	if req.ReferenceNumber != nil {
+		transactionNumber = *req.ReferenceNumber
+	} else {
+		transactionNumber = ""
+	}
+	result, err := tx.Exec("INSERT INTO transactions (type, transaction_date, transaction_number, memo, status, building_id, user_id, unit_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+		"check", req.CheckDate, transactionNumber, memo, transactionStatus, req.BuildingID, userID, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create transaction: %v", err)
 	}
@@ -359,8 +365,14 @@ func (s *CheckService) UpdateCheck(req UpdateCheckRequest, userID int) (*CheckRe
 	if req.Memo != nil {
 		memo = *req.Memo
 	}
-	_, err = tx.Exec("UPDATE transactions SET transaction_date = ?, memo = ? WHERE id = ?",
-		req.CheckDate, memo, existingCheck.TransactionID)
+	var transactionNumber string
+	if req.ReferenceNumber != nil {
+		transactionNumber = *req.ReferenceNumber
+	} else {
+		transactionNumber = ""
+	}
+	_, err = tx.Exec("UPDATE transactions SET transaction_date = ?, transaction_number = ?, memo = ? WHERE id = ?",
+		req.CheckDate, transactionNumber, memo, existingCheck.TransactionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update transaction: %v", err)
 	}

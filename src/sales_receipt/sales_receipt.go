@@ -7,7 +7,7 @@ import (
 
 type SalesReceipt struct {
 	ID            int     `json:"id"`
-	ReceiptNo     int     `json:"receipt_no"`
+	ReceiptNo     string  `json:"receipt_no"`
 	TransactionID int     `json:"transaction_id"`
 	ReceiptDate   string  `json:"receipt_date"`
 	UnitID        *int    `json:"unit_id"`
@@ -26,8 +26,8 @@ type SalesReceipt struct {
 func (sr *SalesReceipt) Validate() map[string]string {
 	errors := make(map[string]string)
 
-	if sr.ReceiptNo <= 0 {
-		errors["receipt_no"] = "Receipt number must be greater than 0"
+	if strings.TrimSpace(sr.ReceiptNo) == "" {
+		errors["receipt_no"] = "Receipt number is required"
 	}
 
 	if sr.TransactionID <= 0 {

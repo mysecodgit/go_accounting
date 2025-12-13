@@ -28,8 +28,8 @@ func (r *journalRepo) Create(journal Journal) (Journal, error) {
 		memo = nil
 	}
 
-	result, err := r.db.Exec("INSERT INTO journal (transaction_id, journal_date, building_id, memo, total_amount) VALUES (?, ?, ?, ?, ?)",
-		journal.TransactionID, journal.JournalDate, journal.BuildingID, memo, journal.TotalAmount)
+	result, err := r.db.Exec("INSERT INTO journal (transaction_id, reference, journal_date, building_id, memo, total_amount) VALUES (?, ?, ?, ?, ?, ?)",
+		journal.TransactionID, journal.Reference, journal.JournalDate, journal.BuildingID, memo, journal.TotalAmount)
 
 	if err != nil {
 		return journal, err
@@ -38,8 +38,8 @@ func (r *journalRepo) Create(journal Journal) (Journal, error) {
 	id, _ := result.LastInsertId()
 	journal.ID = int(id)
 
-	err = r.db.QueryRow("SELECT id, transaction_id, journal_date, building_id, memo, total_amount, created_at FROM journal WHERE id = ?", journal.ID).
-		Scan(&journal.ID, &journal.TransactionID, &journal.JournalDate, &journal.BuildingID, &journal.Memo, &journal.TotalAmount, &journal.CreatedAt)
+	err = r.db.QueryRow("SELECT id, transaction_id, reference, journal_date, building_id, memo, total_amount, created_at FROM journal WHERE id = ?", journal.ID).
+		Scan(&journal.ID, &journal.TransactionID, &journal.Reference, &journal.JournalDate, &journal.BuildingID, &journal.Memo, &journal.TotalAmount, &journal.CreatedAt)
 
 	return journal, err
 }
@@ -52,15 +52,15 @@ func (r *journalRepo) Update(journal Journal) (Journal, error) {
 		memo = nil
 	}
 
-	_, err := r.db.Exec("UPDATE journal SET journal_date = ?, memo = ?, total_amount = ? WHERE id = ?",
-		journal.JournalDate, memo, journal.TotalAmount, journal.ID)
+	_, err := r.db.Exec("UPDATE journal SET reference = ?, journal_date = ?, memo = ?, total_amount = ? WHERE id = ?",
+		journal.Reference, journal.JournalDate, memo, journal.TotalAmount, journal.ID)
 
 	if err != nil {
 		return journal, err
 	}
 
-	err = r.db.QueryRow("SELECT id, transaction_id, journal_date, building_id, memo, total_amount, created_at FROM journal WHERE id = ?", journal.ID).
-		Scan(&journal.ID, &journal.TransactionID, &journal.JournalDate, &journal.BuildingID, &journal.Memo, &journal.TotalAmount, &journal.CreatedAt)
+	err = r.db.QueryRow("SELECT id, transaction_id, reference, journal_date, building_id, memo, total_amount, created_at FROM journal WHERE id = ?", journal.ID).
+		Scan(&journal.ID, &journal.TransactionID, &journal.Reference, &journal.JournalDate, &journal.BuildingID, &journal.Memo, &journal.TotalAmount, &journal.CreatedAt)
 
 	return journal, err
 }
@@ -78,7 +78,7 @@ func (r *journalRepo) GetByID(id int) (Journal, error) {
 }
 
 func (r *journalRepo) GetByBuildingID(buildingID int) ([]Journal, error) {
-	rows, err := r.db.Query("SELECT id, transaction_id, journal_date, building_id, memo, total_amount, created_at FROM journal WHERE building_id = ? ORDER BY created_at DESC", buildingID)
+	rows, err := r.db.Query("SELECT id, transaction_id, reference, journal_date, building_id, memo, total_amount, created_at FROM journal WHERE building_id = ? ORDER BY created_at DESC", buildingID)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +87,7 @@ func (r *journalRepo) GetByBuildingID(buildingID int) ([]Journal, error) {
 	journals := []Journal{}
 	for rows.Next() {
 		var journal Journal
-		err := rows.Scan(&journal.ID, &journal.TransactionID, &journal.JournalDate, &journal.BuildingID, &journal.Memo, &journal.TotalAmount, &journal.CreatedAt)
+		err := rows.Scan(&journal.ID, &journal.TransactionID, &journal.Reference, &journal.JournalDate, &journal.BuildingID, &journal.Memo, &journal.TotalAmount, &journal.CreatedAt)
 		if err != nil {
 			return nil, err
 		}

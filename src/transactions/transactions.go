@@ -6,16 +6,17 @@ import (
 )
 
 type Transaction struct {
-	ID              int    `json:"id"`
-	Type            string `json:"type"`
-	TransactionDate string `json:"transaction_date"`
-	Memo            string `json:"memo"`
-	Status          int    `json:"status"`
-	BuildingID      int    `json:"building_id"`
-	UserID          int    `json:"user_id"`
-	UnitID          *int   `json:"unit_id"`
-	CreatedAt       string `json:"created_at"`
-	UpdatedAt       string `json:"updated_at"`
+	ID               int    `json:"id"`
+	Type             string `json:"type"`
+	TransactionDate  string `json:"transaction_date"`
+	TransactionNumber string `json:"transaction_number"`
+	Memo             string `json:"memo"`
+	Status           int    `json:"status"`
+	BuildingID       int    `json:"building_id"`
+	UserID           int    `json:"user_id"`
+	UnitID           *int   `json:"unit_id"`
+	CreatedAt        string `json:"created_at"`
+	UpdatedAt        string `json:"updated_at"`
 }
 
 func (t *Transaction) Validate() map[string]string {

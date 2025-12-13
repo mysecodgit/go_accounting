@@ -265,235 +265,6 @@ func (s *ReportsService) calculateAccountBalanceBeforeDate(accountID int, before
 	}
 }
 
-// GetCustomerVendorReport generates customer or vendor report
-func (s *ReportsService) GetCustomerVendorReport(req CustomerVendorReportRequest) (*CustomerVendorReportResponse, error) {
-	// Get people based on filters
-	var peopleList []people.Person
-	var peopleTypes []people_types.PeopleType
-	var err error
-
-	if req.PeopleID != nil {
-		person, peopleType, _, err := s.peopleRepo.GetByID(*req.PeopleID)
-		if err != nil {
-			return nil, fmt.Errorf("person not found: %v", err)
-		}
-		peopleList = []people.Person{person}
-		peopleTypes = []people_types.PeopleType{peopleType}
-	} else {
-		peopleList, peopleTypes, _, err = s.peopleRepo.GetByBuildingID(req.BuildingID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get people: %v", err)
-		}
-	}
-
-	// Filter by type_id if provided
-	if req.TypeID != nil {
-		filteredPeople := []people.Person{}
-		filteredTypes := []people_types.PeopleType{}
-		for i, person := range peopleList {
-			if person.TypeID == *req.TypeID {
-				filteredPeople = append(filteredPeople, person)
-				filteredTypes = append(filteredTypes, peopleTypes[i])
-			}
-		}
-		peopleList = filteredPeople
-		peopleTypes = filteredTypes
-	}
-
-	// Find Account Receivable and Account Payable account types
-	arAccountTypeID, err := s.findAccountTypeByName("Account Receivable")
-	if err != nil {
-		return nil, fmt.Errorf("failed to find Account Receivable account type: %v", err)
-	}
-	apAccountTypeID, err := s.findAccountTypeByName("Account Payable")
-	if err != nil {
-		return nil, fmt.Errorf("failed to find Account Payable account type: %v", err)
-	}
-
-	// Get all accounts for the building
-	accountsList, accountTypesList, _, err := s.accountRepo.GetByBuildingID(req.BuildingID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get accounts: %v", err)
-	}
-
-	// Find AR and AP accounts
-	arAccountIDs := []int{}
-	apAccountIDs := []int{}
-	for i, account := range accountsList {
-		if i < len(accountTypesList) && accountTypesList[i].ID == arAccountTypeID {
-			arAccountIDs = append(arAccountIDs, account.ID)
-		}
-		if i < len(accountTypesList) && accountTypesList[i].ID == apAccountTypeID {
-			apAccountIDs = append(apAccountIDs, account.ID)
-		}
-	}
-
-	summary := []CustomerVendorSummary{}
-	details := make(map[int][]CustomerVendorDetail)
-	totalOutstanding := 0.0
-
-	for _, person := range peopleList {
-		// Get invoices for this person within date range
-		invoices, err := s.getInvoicesForPerson(person.ID, req.StartDate, req.EndDate)
-		if err != nil {
-			continue
-		}
-
-		// Get payments for this person within date range
-		payments, err := s.getPaymentsForPerson(person.ID, req.StartDate, req.EndDate)
-		if err != nil {
-			continue
-		}
-
-		// Calculate totals
-		totalInvoices := 0.0
-		totalPayments := 0.0
-		invoiceCount := len(invoices)
-		paymentCount := len(payments)
-
-		personDetails := []CustomerVendorDetail{}
-
-		// Process invoices
-		for _, invoice := range invoices {
-			totalInvoices += invoice.Amount
-			personDetails = append(personDetails, CustomerVendorDetail{
-				TransactionID:   invoice.TransactionID,
-				TransactionDate: invoice.SalesDate,
-				TransactionType: "Invoice",
-				InvoiceNo:       &invoice.InvoiceNo,
-				Description:     invoice.Description,
-				Amount:          invoice.Amount,
-			})
-		}
-
-		// Process payments
-		for _, payment := range payments {
-			totalPayments += payment.Amount
-			personDetails = append(personDetails, CustomerVendorDetail{
-				TransactionID:   payment.TransactionID,
-				TransactionDate: payment.Date,
-				TransactionType: "Payment",
-				Description:     "Payment for Invoice",
-				Amount:          payment.Amount,
-			})
-		}
-
-		// Get people type name from the peopleTypes array
-		peopleTypeName := "Customer" // Default
-		for i, p := range peopleList {
-			if p.ID == person.ID && i < len(peopleTypes) {
-				peopleTypeName = peopleTypes[i].Title
-				break
-			}
-		}
-
-		// Determine which account type to use based on people type
-		var accountIDsToUse []int
-		isCustomer := strings.Contains(strings.ToLower(peopleTypeName), "customer")
-
-		if isCustomer {
-			// For customers: use Account Receivable
-			accountIDsToUse = arAccountIDs
-		} else {
-			// For vendors: use Account Payable
-			accountIDsToUse = apAccountIDs
-		}
-
-		// Calculate balance from splits up to end date
-		balance, err := s.calculatePersonBalanceFromSplits(person.ID, accountIDsToUse, req.EndDate)
-		if err != nil {
-			// Fallback to invoice - payment calculation if split calculation fails
-			balance = totalInvoices - totalPayments
-		}
-
-		outstanding := balance
-		totalOutstanding += outstanding
-
-		summary = append(summary, CustomerVendorSummary{
-			PeopleID:      person.ID,
-			PeopleName:    person.Name,
-			PeopleType:    peopleTypeName,
-			TotalInvoices: totalInvoices,
-			TotalPayments: totalPayments,
-			Outstanding:   outstanding,
-			InvoiceCount:  invoiceCount,
-			PaymentCount:  paymentCount,
-		})
-
-		details[person.ID] = personDetails
-	}
-
-	return &CustomerVendorReportResponse{
-		Summary:          summary,
-		Details:          details,
-		TotalOutstanding: totalOutstanding,
-	}, nil
-}
-
-// Helper function to get invoices for a person
-func (s *ReportsService) getInvoicesForPerson(peopleID int, startDate, endDate string) ([]invoices.Invoice, error) {
-	query := `
-		SELECT id, invoice_no, transaction_id, sales_date, due_date, ar_account_id, unit_id, people_id, user_id, amount, description, refrence, cancel_reason, status, building_id, createdAt, updatedAt
-		FROM invoices
-		WHERE people_id = ? 
-			AND status = '1'
-			AND DATE(sales_date) >= ?
-			AND DATE(sales_date) <= ?
-		ORDER BY sales_date DESC
-	`
-
-	rows, err := s.db.Query(query, peopleID, startDate, endDate)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	invoiceList := []invoices.Invoice{}
-	for rows.Next() {
-		var invoice invoices.Invoice
-		err := rows.Scan(&invoice.ID, &invoice.InvoiceNo, &invoice.TransactionID, &invoice.SalesDate, &invoice.DueDate, &invoice.ARAccountID, &invoice.UnitID, &invoice.PeopleID, &invoice.UserID, &invoice.Amount, &invoice.Description, &invoice.Reference, &invoice.CancelReason, &invoice.Status, &invoice.BuildingID, &invoice.CreatedAt, &invoice.UpdatedAt)
-		if err != nil {
-			continue
-		}
-		invoiceList = append(invoiceList, invoice)
-	}
-
-	return invoiceList, nil
-}
-
-// Helper function to get payments for a person
-func (s *ReportsService) getPaymentsForPerson(peopleID int, startDate, endDate string) ([]invoice_payments.InvoicePayment, error) {
-	// Get payments through invoices
-	query := `
-		SELECT ip.id, ip.transaction_id, ip.date, ip.invoice_id, ip.user_id, ip.account_id, ip.amount, ip.status, ip.createdAt, ip.updatedAt
-		FROM invoice_payments ip
-		INNER JOIN invoices i ON ip.invoice_id = i.id
-		WHERE i.people_id = ?
-			AND ip.status = '1'
-			AND DATE(ip.date) >= ?
-			AND DATE(ip.date) <= ?
-		ORDER BY ip.date DESC
-	`
-
-	rows, err := s.db.Query(query, peopleID, startDate, endDate)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	paymentList := []invoice_payments.InvoicePayment{}
-	for rows.Next() {
-		var payment invoice_payments.InvoicePayment
-		err := rows.Scan(&payment.ID, &payment.TransactionID, &payment.Date, &payment.InvoiceID, &payment.UserID, &payment.AccountID, &payment.Amount, &payment.Status, &payment.CreatedAt, &payment.UpdatedAt)
-		if err != nil {
-			continue
-		}
-		paymentList = append(paymentList, payment)
-	}
-
-	return paymentList, nil
-}
-
 // FindPeopleTypeByTitle finds a people type by title (case-insensitive)
 func (s *ReportsService) FindPeopleTypeByTitle(title string) (int, error) {
 	allTypes, err := s.peopleTypeRepo.GetAll()
@@ -788,17 +559,18 @@ func (s *ReportsService) GetTransactionDetailsByAccount(req TransactionDetailsBy
 			}
 
 			splitDetails = append(splitDetails, TransactionDetailSplit{
-				SplitID:         split.ID,
-				TransactionID:   split.TransactionID,
-				TransactionDate: transaction.TransactionDate,
-				TransactionType: transaction.Type,
-				TransactionMemo: transaction.Memo,
-				PeopleID:        split.PeopleID,
-				PeopleName:      peopleName,
-				Description:     nil, // Can be enhanced later if needed
-				Debit:           split.Debit,
-				Credit:          split.Credit,
-				Balance:         runningBalance,
+				SplitID:           split.ID,
+				TransactionID:     split.TransactionID,
+				TransactionNumber: transaction.TransactionNumber,
+				TransactionDate:   transaction.TransactionDate,
+				TransactionType:   transaction.Type,
+				TransactionMemo:   transaction.Memo,
+				PeopleID:          split.PeopleID,
+				PeopleName:        peopleName,
+				Description:       nil, // Can be enhanced later if needed
+				Debit:             split.Debit,
+				Credit:            split.Credit,
+				Balance:           runningBalance,
 			})
 		}
 
@@ -842,5 +614,305 @@ func (s *ReportsService) GetTransactionDetailsByAccount(req TransactionDetailsBy
 		Accounts:         accountDetails,
 		GrandTotalDebit:  grandTotalDebit,
 		GrandTotalCredit: grandTotalCredit,
+	}, nil
+}
+
+// GetCustomerBalanceSummary generates a customer balance summary from splits
+func (s *ReportsService) GetCustomerBalanceSummary(req CustomerBalanceSummaryRequest) (*CustomerBalanceSummaryResponse, error) {
+	asOfDate := req.AsOfDate
+	if asOfDate == "" {
+		asOfDate = time.Now().Format("2006-01-02")
+	}
+
+	// Get all people types to find customer type
+	peopleTypes, err := s.peopleTypeRepo.GetAll()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get people types: %v", err)
+	}
+
+	// Find the "customer" people type
+	var customerTypeID *int
+	for _, pt := range peopleTypes {
+		if strings.ToLower(pt.Title) == "customer" {
+			customerTypeID = &pt.ID
+			break
+		}
+	}
+
+	if customerTypeID == nil {
+		return nil, fmt.Errorf("customer people type not found")
+	}
+
+	// Get all people for the building
+	allPeople, peopleTypesList, _, err := s.peopleRepo.GetByBuildingID(req.BuildingID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get people: %v", err)
+	}
+
+	// Filter to only customers
+	customers := []people.Person{}
+	for i, person := range allPeople {
+		if i < len(peopleTypesList) && peopleTypesList[i].ID == *customerTypeID {
+			customers = append(customers, person)
+		}
+	}
+
+	customerBalances := []CustomerBalance{}
+	totalBalance := 0.0
+
+	// Calculate balance for each customer from all splits
+	for _, customer := range customers {
+		// Get all splits for this customer up to asOfDate
+		query := `
+			SELECT 
+				COALESCE(SUM(CASE WHEN s.debit IS NOT NULL THEN s.debit ELSE 0 END), 0) as total_debit,
+				COALESCE(SUM(CASE WHEN s.credit IS NOT NULL THEN s.credit ELSE 0 END), 0) as total_credit
+			FROM splits s
+			INNER JOIN transactions t ON s.transaction_id = t.id
+			WHERE s.people_id = ?
+				AND s.status = '1'
+				AND t.status = '1'
+				AND DATE(t.transaction_date) <= ?
+		`
+
+		var totalDebit, totalCredit sql.NullFloat64
+		err := s.db.QueryRow(query, customer.ID, asOfDate).Scan(&totalDebit, &totalCredit)
+		if err != nil && err != sql.ErrNoRows {
+			return nil, fmt.Errorf("failed to calculate balance for customer %d: %v", customer.ID, err)
+		}
+
+		debitAmount := 0.0
+		if totalDebit.Valid {
+			debitAmount = totalDebit.Float64
+		}
+		creditAmount := 0.0
+		if totalCredit.Valid {
+			creditAmount = totalCredit.Float64
+		}
+
+		// Balance = Debit - Credit (positive means customer owes us, negative means we owe customer)
+		balance := debitAmount - creditAmount
+
+		// Only include customers with non-zero balance
+		if balance != 0 {
+			customerBalances = append(customerBalances, CustomerBalance{
+				PeopleID:   customer.ID,
+				PeopleName: customer.Name,
+				Balance:    balance,
+			})
+			totalBalance += balance
+		}
+	}
+
+	return &CustomerBalanceSummaryResponse{
+		BuildingID:   req.BuildingID,
+		AsOfDate:     asOfDate,
+		Customers:    customerBalances,
+		TotalBalance: totalBalance,
+	}, nil
+}
+
+// GetCustomerBalanceDetails generates a detailed customer balance report with transaction splits
+func (s *ReportsService) GetCustomerBalanceDetails(req CustomerBalanceDetailsRequest) (*CustomerBalanceDetailsResponse, error) {
+	asOfDate := req.AsOfDate
+	if asOfDate == "" {
+		asOfDate = time.Now().Format("2006-01-02")
+	}
+
+	// Get all people types to find customer type
+	peopleTypes, err := s.peopleTypeRepo.GetAll()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get people types: %v", err)
+	}
+
+	// Find the "customer" people type
+	var customerTypeID *int
+	for _, pt := range peopleTypes {
+		if strings.ToLower(pt.Title) == "customer" {
+			customerTypeID = &pt.ID
+			break
+		}
+	}
+
+	if customerTypeID == nil {
+		return nil, fmt.Errorf("customer people type not found")
+	}
+
+	// Get all people for the building
+	allPeople, peopleTypesList, _, err := s.peopleRepo.GetByBuildingID(req.BuildingID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get people: %v", err)
+	}
+
+	// Filter to only customers
+	customers := []people.Person{}
+	for i, person := range allPeople {
+		if i < len(peopleTypesList) && peopleTypesList[i].ID == *customerTypeID {
+			// If PeopleID filter is specified, only include that customer
+			if req.PeopleID == nil || *req.PeopleID == person.ID {
+				customers = append(customers, person)
+			}
+		}
+	}
+
+	customerDetails := []CustomerBalanceDetails{}
+	grandTotalDebit := 0.0
+	grandTotalCredit := 0.0
+	grandTotalBalance := 0.0
+
+	// Process each customer
+	for _, customer := range customers {
+		// Get all splits for this customer up to asOfDate, ordered by transaction date
+		query := `
+			SELECT 
+				s.id as split_id,
+				s.transaction_id,
+				s.account_id,
+				s.debit,
+				s.credit,
+				t.transaction_date,
+				t.type as transaction_type,
+				t.transaction_number,
+				t.memo as transaction_memo,
+				a.account_name,
+				a.account_number
+			FROM splits s
+			INNER JOIN transactions t ON s.transaction_id = t.id
+			INNER JOIN accounts a ON s.account_id = a.id
+			WHERE s.people_id = ?
+				AND s.status = '1'
+				AND t.status = '1'
+				AND DATE(t.transaction_date) <= ?
+			ORDER BY t.transaction_date, t.id, s.id
+		`
+
+		rows, err := s.db.Query(query, customer.ID, asOfDate)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get splits for customer %d: %v", customer.ID, err)
+		}
+		defer rows.Close()
+
+		// Group splits by account
+		accountMap := make(map[int]*CustomerBalanceAccount)
+		accountOrder := []int{} // To maintain order
+
+		customerTotalDebit := 0.0
+		customerTotalCredit := 0.0
+		customerRunningBalance := 0.0
+
+		for rows.Next() {
+			var split CustomerBalanceDetailSplit
+			var accountNumber sql.NullInt64
+			var debit, credit sql.NullFloat64
+
+			err := rows.Scan(
+				&split.SplitID,
+				&split.TransactionID,
+				&split.AccountID,
+				&debit,
+				&credit,
+				&split.TransactionDate,
+				&split.TransactionType,
+				&split.TransactionNumber,
+				&split.TransactionMemo,
+				&split.AccountName,
+				&accountNumber,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to scan split: %v", err)
+			}
+
+			if accountNumber.Valid {
+				split.AccountNumber = int(accountNumber.Int64)
+			}
+
+			// Initialize account if not exists
+			if _, exists := accountMap[split.AccountID]; !exists {
+				accountMap[split.AccountID] = &CustomerBalanceAccount{
+					AccountID:     split.AccountID,
+					AccountName:   split.AccountName,
+					AccountNumber: split.AccountNumber,
+					Splits:        []CustomerBalanceDetailSplit{},
+					TotalDebit:    0.0,
+					TotalCredit:   0.0,
+					TotalBalance:  0.0,
+					IsTotalRow:    false,
+				}
+				accountOrder = append(accountOrder, split.AccountID)
+			}
+
+			account := accountMap[split.AccountID]
+
+			if debit.Valid {
+				debitValue := debit.Float64
+				split.Debit = &debitValue
+				account.TotalDebit += debit.Float64
+				customerTotalDebit += debit.Float64
+				customerRunningBalance += debit.Float64
+			}
+
+			if credit.Valid {
+				creditValue := credit.Float64
+				split.Credit = &creditValue
+				account.TotalCredit += credit.Float64
+				customerTotalCredit += credit.Float64
+				customerRunningBalance -= credit.Float64
+			}
+
+			// Running balance is calculated at customer level, not account level
+			split.Balance = customerRunningBalance
+			account.Splits = append(account.Splits, split)
+		}
+
+		// Only include customers with transactions
+		if len(accountMap) > 0 {
+			// Build accounts list in order and calculate account balances
+			accounts := []CustomerBalanceAccount{}
+			for _, accountID := range accountOrder {
+				account := accountMap[accountID]
+				// Calculate account balance: debit - credit
+				account.TotalBalance = account.TotalDebit - account.TotalCredit
+				accounts = append(accounts, *account)
+			}
+
+			finalBalance := customerRunningBalance
+
+			// Add customer header
+			customerDetails = append(customerDetails, CustomerBalanceDetails{
+				PeopleID:     customer.ID,
+				PeopleName:   customer.Name,
+				Accounts:     accounts,
+				TotalDebit:   customerTotalDebit,
+				TotalCredit:  customerTotalCredit,
+				TotalBalance: finalBalance,
+				IsTotalRow:   false,
+				IsHeader:    true,
+			})
+
+			// Add total row for this customer
+			customerDetails = append(customerDetails, CustomerBalanceDetails{
+				PeopleID:     customer.ID,
+				PeopleName:   "TOTAL",
+				Accounts:     []CustomerBalanceAccount{},
+				TotalDebit:   customerTotalDebit,
+				TotalCredit:  customerTotalCredit,
+				TotalBalance: finalBalance,
+				IsTotalRow:   true,
+				IsHeader:    false,
+			})
+
+			grandTotalDebit += customerTotalDebit
+			grandTotalCredit += customerTotalCredit
+			grandTotalBalance += finalBalance
+		}
+	}
+
+	return &CustomerBalanceDetailsResponse{
+		BuildingID:        req.BuildingID,
+		AsOfDate:          asOfDate,
+		Customers:         customerDetails,
+		GrandTotalDebit:   grandTotalDebit,
+		GrandTotalCredit:  grandTotalCredit,
+		GrandTotalBalance: grandTotalBalance,
 	}, nil
 }

@@ -16,11 +16,12 @@ type JournalLineInput struct {
 }
 
 type CreateJournalRequest struct {
+	Reference   string            `json:"reference"`
 	JournalDate string            `json:"journal_date"`
-	BuildingID  int               `json:"building_id"`
-	Memo        *string           `json:"memo"`
-	TotalAmount float64           `json:"total_amount"`
-	Lines       []JournalLineInput `json:"lines"`
+	BuildingID    int             `json:"building_id"`
+	Memo         *string          `json:"memo"`
+	TotalAmount  float64          `json:"total_amount"`
+	Lines        []JournalLineInput `json:"lines"`
 }
 
 type SplitPreview struct {
@@ -42,6 +43,7 @@ type JournalPreviewResponse struct {
 
 type UpdateJournalRequest struct {
 	ID          int                `json:"id"`
+	Reference   string             `json:"reference"`
 	JournalDate string             `json:"journal_date"`
 	BuildingID  int                `json:"building_id"`
 	Memo        *string            `json:"memo"`

@@ -339,8 +339,8 @@ func (s *SalesReceiptService) CreateSalesReceipt(req CreateSalesReceiptRequest, 
 		unitID = nil
 	}
 
-	result, err := tx.Exec("INSERT INTO transactions (type, transaction_date, memo, status, building_id, user_id, unit_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		"sales receipt", req.ReceiptDate, req.Description, transactionStatus, req.BuildingID, userID, unitID)
+	result, err := tx.Exec("INSERT INTO transactions (type, transaction_date, transaction_number, memo, status, building_id, user_id, unit_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+		"sales receipt", req.ReceiptDate, req.ReceiptNo, req.Description, transactionStatus, req.BuildingID, userID, unitID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create transaction: %v", err)
 	}
@@ -559,8 +559,8 @@ func (s *SalesReceiptService) UpdateSalesReceipt(req UpdateSalesReceiptRequest, 
 		unitID = nil
 	}
 
-	_, err = tx.Exec("UPDATE transactions SET transaction_date = ?, memo = ?, unit_id = ? WHERE id = ?",
-		req.ReceiptDate, req.Description, unitID, existingReceipt.TransactionID)
+	_, err = tx.Exec("UPDATE transactions SET transaction_date = ?, transaction_number = ?, memo = ?, unit_id = ? WHERE id = ?",
+		req.ReceiptDate, req.ReceiptNo, req.Description, unitID, existingReceipt.TransactionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update transaction: %v", err)
 	}

@@ -7,6 +7,7 @@ import (
 type Journal struct {
 	ID            int     `json:"id"`
 	TransactionID int     `json:"transaction_id"`
+	Reference     string  `json:"reference"`
 	JournalDate   string  `json:"journal_date"`
 	BuildingID    int     `json:"building_id"`
 	Memo          *string `json:"memo"`

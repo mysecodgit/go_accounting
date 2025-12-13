@@ -211,11 +211,12 @@ func (s *InvoiceService) CalculateSplitsForInvoice(req CreateInvoiceRequest, use
 	}
 
 	// 2. Debit: Discount Income Account (if discount items exist)
+	// Note: people_id is only set for AR account, not for income/expense accounts
 	if discountTotal > 0 && discountIncomeAccount != nil {
 		splits = append(splits, SplitPreview{
 			AccountID:   discountIncomeAccount.ID,
 			AccountName: discountIncomeAccount.AccountName,
-			PeopleID:    req.PeopleID,
+			PeopleID:    nil, // Only AR account gets people_id
 			Debit:       &discountTotal,
 			Credit:      nil,
 			Status:      "1", // 1 = active, 0 = inactive/deleted
@@ -223,11 +224,12 @@ func (s *InvoiceService) CalculateSplitsForInvoice(req CreateInvoiceRequest, use
 	}
 
 	// 3. Debit: Payment Asset Account (if payment items exist)
+	// Note: people_id is only set for AR account, not for asset accounts
 	if paymentTotal > 0 && paymentAssetAccount != nil {
 		splits = append(splits, SplitPreview{
 			AccountID:   paymentAssetAccount.ID,
 			AccountName: paymentAssetAccount.AccountName,
-			PeopleID:    req.PeopleID,
+			PeopleID:    nil, // Only AR account gets people_id
 			Debit:       &paymentTotal,
 			Credit:      nil,
 			Status:      "1", // 1 = active, 0 = inactive/deleted
@@ -249,7 +251,7 @@ func (s *InvoiceService) CalculateSplitsForInvoice(req CreateInvoiceRequest, use
 		splits = append(splits, SplitPreview{
 			AccountID:   accountID,
 			AccountName: account.AccountName,
-			PeopleID:    req.PeopleID,
+			PeopleID:    nil, // Only AR account gets people_id
 			Debit:       nil,
 			Credit:      &creditAmount,
 			Status:      "1", // 1 = active, 0 = inactive/deleted
@@ -266,7 +268,7 @@ func (s *InvoiceService) CalculateSplitsForInvoice(req CreateInvoiceRequest, use
 		splits = append(splits, SplitPreview{
 			AccountID:   accountID,
 			AccountName: account.AccountName,
-			PeopleID:    req.PeopleID,
+			PeopleID:    nil, // Only AR account gets people_id
 			Debit:       &debitAmount,
 			Credit:      nil,
 			Status:      "1", // 1 = active, 0 = inactive/deleted
@@ -390,8 +392,8 @@ func (s *InvoiceService) CreateInvoice(req CreateInvoiceRequest, userID int) (*I
 
 	// Always use status "1" (active) when creating transactions
 	transactionStatus := "1"
-	result, err := tx.Exec("INSERT INTO transactions (type, transaction_date, memo, status, building_id, user_id, unit_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		"invoice", req.SalesDate, req.Description, transactionStatus, req.BuildingID, userID, unitID)
+	result, err := tx.Exec("INSERT INTO transactions (type, transaction_date, transaction_number, memo, status, building_id, user_id, unit_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+		"invoice", req.SalesDate, req.InvoiceNo, req.Description, transactionStatus, req.BuildingID, userID, unitID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create transaction: %v", err)
 	}
@@ -418,8 +420,8 @@ func (s *InvoiceService) CreateInvoice(req CreateInvoiceRequest, userID int) (*I
 
 	// Always use status "1" (active) when creating invoices
 	invoiceStatus := "1"
-	result, err = tx.Exec("INSERT INTO invoices (invoice_no, transaction_id, sales_date, due_date, ar_account_id, unit_id, people_id, user_id, amount, description, refrence, cancel_reason, status, building_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		req.InvoiceNo, transactionID, req.SalesDate, req.DueDate, arAccountID, unitID, peopleID, userID, req.Amount, req.Description, req.Reference, nil, invoiceStatus, req.BuildingID)
+	result, err = tx.Exec("INSERT INTO invoices (invoice_no, transaction_id, sales_date, due_date, ar_account_id, unit_id, people_id, user_id, amount, description, cancel_reason, status, building_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		req.InvoiceNo, transactionID, req.SalesDate, req.DueDate, arAccountID, unitID, peopleID, userID, req.Amount, req.Description, nil, invoiceStatus, req.BuildingID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create invoice: %v", err)
 	}
@@ -624,8 +626,8 @@ func (s *InvoiceService) UpdateInvoice(req UpdateInvoiceRequest, userID int) (*I
 		unitID = nil
 	}
 
-	_, err = tx.Exec("UPDATE transactions SET transaction_date = ?, memo = ? WHERE id = ?",
-		req.SalesDate, req.Description, existingInvoice.TransactionID)
+	_, err = tx.Exec("UPDATE transactions SET transaction_date = ?, transaction_number = ?, memo = ? WHERE id = ?",
+		req.SalesDate, req.InvoiceNo, req.Description, existingInvoice.TransactionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update transaction: %v", err)
 	}
@@ -645,8 +647,8 @@ func (s *InvoiceService) UpdateInvoice(req UpdateInvoiceRequest, userID int) (*I
 		arAccountID = nil
 	}
 
-	_, err = tx.Exec("UPDATE invoices SET invoice_no = ?, sales_date = ?, due_date = ?, ar_account_id = ?, unit_id = ?, people_id = ?, amount = ?, description = ?, refrence = ? WHERE id = ?",
-		req.InvoiceNo, req.SalesDate, req.DueDate, arAccountID, unitID, peopleID, req.Amount, req.Description, req.Reference, req.ID)
+	_, err = tx.Exec("UPDATE invoices SET invoice_no = ?, sales_date = ?, due_date = ?, ar_account_id = ?, unit_id = ?, people_id = ?, amount = ?, description = ? WHERE id = ?",
+		req.InvoiceNo, req.SalesDate, req.DueDate, arAccountID, unitID, peopleID, req.Amount, req.Description, req.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update invoice: %v", err)
 	}
@@ -741,7 +743,6 @@ func (s *InvoiceService) UpdateInvoice(req UpdateInvoiceRequest, userID int) (*I
 		ARAccountID: req.ARAccountID,
 		Amount:      req.Amount,
 		Description: req.Description,
-		Reference:   req.Reference,
 		Status:      req.Status,
 		BuildingID:  req.BuildingID,
 		Items:       req.Items,

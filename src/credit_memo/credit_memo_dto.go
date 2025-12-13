@@ -6,6 +6,7 @@ import (
 )
 
 type CreateCreditMemoRequest struct {
+	Reference        string  `json:"reference"`
 	Date             string  `json:"date"`
 	DepositTo        int     `json:"deposit_to"`
 	LiabilityAccount int     `json:"liability_account"`
@@ -35,6 +36,7 @@ type CreditMemoPreviewResponse struct {
 
 type UpdateCreditMemoRequest struct {
 	ID               int     `json:"id"`
+	Reference        string  `json:"reference"`
 	Date             string  `json:"date"`
 	DepositTo        int     `json:"deposit_to"`
 	LiabilityAccount int     `json:"liability_account"`

@@ -15,7 +15,7 @@ type InvoiceItemInput struct {
 }
 
 type CreateInvoiceRequest struct {
-	InvoiceNo   int                `json:"invoice_no"`
+	InvoiceNo   string             `json:"invoice_no"`
 	SalesDate   string             `json:"sales_date"`
 	DueDate     string             `json:"due_date"`
 	UnitID      *int               `json:"unit_id"`
@@ -23,7 +23,6 @@ type CreateInvoiceRequest struct {
 	ARAccountID *int               `json:"ar_account_id"`
 	Amount      float64            `json:"amount"`
 	Description string             `json:"description"`
-	Reference   string             `json:"refrence"`
 	Status      *int               `json:"status"` // Use pointer to distinguish between not provided (nil) and explicitly set to 0
 	BuildingID  int                `json:"building_id"`
 	Items       []InvoiceItemInput `json:"items"`
@@ -48,7 +47,7 @@ type InvoicePreviewResponse struct {
 
 type UpdateInvoiceRequest struct {
 	ID           int                `json:"id"`
-	InvoiceNo    int                `json:"invoice_no"`
+	InvoiceNo    string             `json:"invoice_no"`
 	SalesDate    string             `json:"sales_date"`
 	DueDate      string             `json:"due_date"`
 	UnitID       *int               `json:"unit_id"`
@@ -56,7 +55,6 @@ type UpdateInvoiceRequest struct {
 	ARAccountID  *int               `json:"ar_account_id"`
 	Amount       float64            `json:"amount"`
 	Description  string             `json:"description"`
-	Reference    string             `json:"refrence"`
 	Status       *int               `json:"status"` // Use pointer to distinguish between not provided (nil) and explicitly set to 0
 	BuildingID   int                `json:"building_id"`
 	Items        []InvoiceItemInput `json:"items"`
@@ -71,7 +69,7 @@ type InvoiceResponse struct {
 
 type InvoiceListItem struct {
 	ID                 int     `json:"id"`
-	InvoiceNo          int     `json:"invoice_no"`
+	InvoiceNo          string  `json:"invoice_no"`
 	TransactionID      int     `json:"transaction_id"`
 	SalesDate          string  `json:"sales_date"`
 	DueDate            string  `json:"due_date"`
@@ -81,7 +79,6 @@ type InvoiceListItem struct {
 	UserID             int     `json:"user_id"`
 	Amount             float64 `json:"amount"`
 	Description        string  `json:"description"`
-	Reference          string  `json:"refrence"`
 	CancelReason       *string `json:"cancel_reason"`
 	Status             int     `json:"status"`
 	BuildingID         int     `json:"building_id"`
