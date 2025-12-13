@@ -186,6 +186,7 @@ func (s *InvoiceService) CalculateSplitsForInvoice(req CreateInvoiceRequest, use
 	arAmount := serviceTotalAmount - discountTotal - paymentTotal
 
 	// Create splits
+	// Use unit_id from request for all splits
 	// 1. Debit or Credit: Accounts Receivable (depending on net amount)
 	if arAmount > 0 {
 		// Net positive: debit A/R
@@ -193,6 +194,7 @@ func (s *InvoiceService) CalculateSplitsForInvoice(req CreateInvoiceRequest, use
 			AccountID:   accountsReceivableAccount.ID,
 			AccountName: accountsReceivableAccount.AccountName,
 			PeopleID:    req.PeopleID,
+			UnitID:      req.UnitID, // Use unit_id from request
 			Debit:       &arAmount,
 			Credit:      nil,
 			Status:      "1", // 1 = active, 0 = inactive/deleted
@@ -204,6 +206,7 @@ func (s *InvoiceService) CalculateSplitsForInvoice(req CreateInvoiceRequest, use
 			AccountID:   accountsReceivableAccount.ID,
 			AccountName: accountsReceivableAccount.AccountName,
 			PeopleID:    req.PeopleID,
+			UnitID:      req.UnitID, // Use unit_id from request
 			Debit:       nil,
 			Credit:      &arCreditAmount,
 			Status:      "1", // 1 = active, 0 = inactive/deleted
@@ -217,6 +220,7 @@ func (s *InvoiceService) CalculateSplitsForInvoice(req CreateInvoiceRequest, use
 			AccountID:   discountIncomeAccount.ID,
 			AccountName: discountIncomeAccount.AccountName,
 			PeopleID:    nil, // Only AR account gets people_id
+			UnitID:      req.UnitID, // Use unit_id from request
 			Debit:       &discountTotal,
 			Credit:      nil,
 			Status:      "1", // 1 = active, 0 = inactive/deleted
@@ -230,6 +234,7 @@ func (s *InvoiceService) CalculateSplitsForInvoice(req CreateInvoiceRequest, use
 			AccountID:   paymentAssetAccount.ID,
 			AccountName: paymentAssetAccount.AccountName,
 			PeopleID:    nil, // Only AR account gets people_id
+			UnitID:      req.UnitID, // Use unit_id from request
 			Debit:       &paymentTotal,
 			Credit:      nil,
 			Status:      "1", // 1 = active, 0 = inactive/deleted
@@ -252,6 +257,7 @@ func (s *InvoiceService) CalculateSplitsForInvoice(req CreateInvoiceRequest, use
 			AccountID:   accountID,
 			AccountName: account.AccountName,
 			PeopleID:    nil, // Only AR account gets people_id
+			UnitID:      req.UnitID, // Use unit_id from request
 			Debit:       nil,
 			Credit:      &creditAmount,
 			Status:      "1", // 1 = active, 0 = inactive/deleted
@@ -269,6 +275,7 @@ func (s *InvoiceService) CalculateSplitsForInvoice(req CreateInvoiceRequest, use
 			AccountID:   accountID,
 			AccountName: account.AccountName,
 			PeopleID:    nil, // Only AR account gets people_id
+			UnitID:      req.UnitID, // Use unit_id from request
 			Debit:       &debitAmount,
 			Credit:      nil,
 			Status:      "1", // 1 = active, 0 = inactive/deleted
@@ -514,6 +521,13 @@ func (s *InvoiceService) CreateInvoice(req CreateInvoiceRequest, userID int) (*I
 			peopleIDSplit = nil
 		}
 
+		var unitIDSplit interface{}
+		if preview.UnitID != nil {
+			unitIDSplit = *preview.UnitID
+		} else {
+			unitIDSplit = nil
+		}
+
 		var debit interface{}
 		if preview.Debit != nil {
 			debit = *preview.Debit
@@ -529,8 +543,8 @@ func (s *InvoiceService) CreateInvoice(req CreateInvoiceRequest, userID int) (*I
 		}
 
 		// Always set status to "1" (active) when creating splits
-		_, err = tx.Exec("INSERT INTO splits (transaction_id, account_id, people_id, debit, credit, status) VALUES (?, ?, ?, ?, ?, ?)",
-			transactionID, preview.AccountID, peopleIDSplit, debit, credit, "1")
+		_, err = tx.Exec("INSERT INTO splits (transaction_id, account_id, people_id, unit_id, debit, credit, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			transactionID, preview.AccountID, peopleIDSplit, unitIDSplit, debit, credit, "1")
 		if err != nil {
 			return nil, fmt.Errorf("failed to create split: %v", err)
 		}
@@ -762,6 +776,13 @@ func (s *InvoiceService) UpdateInvoice(req UpdateInvoiceRequest, userID int) (*I
 			peopleIDSplit = nil
 		}
 
+		var unitIDSplit interface{}
+		if preview.UnitID != nil {
+			unitIDSplit = *preview.UnitID
+		} else {
+			unitIDSplit = nil
+		}
+
 		var debit interface{}
 		if preview.Debit != nil {
 			debit = *preview.Debit
@@ -777,8 +798,8 @@ func (s *InvoiceService) UpdateInvoice(req UpdateInvoiceRequest, userID int) (*I
 		}
 
 		// Always set status to "1" (active) when creating splits
-		_, err = tx.Exec("INSERT INTO splits (transaction_id, account_id, people_id, debit, credit, status) VALUES (?, ?, ?, ?, ?, ?)",
-			existingInvoice.TransactionID, preview.AccountID, peopleIDSplit, debit, credit, "1")
+		_, err = tx.Exec("INSERT INTO splits (transaction_id, account_id, people_id, unit_id, debit, credit, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			existingInvoice.TransactionID, preview.AccountID, peopleIDSplit, unitIDSplit, debit, credit, "1")
 		if err != nil {
 			return nil, fmt.Errorf("failed to create split: %v", err)
 		}

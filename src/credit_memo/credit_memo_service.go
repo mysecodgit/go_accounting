@@ -77,10 +77,12 @@ func (s *CreditMemoService) CalculateSplitsForCreditMemo(req CreateCreditMemoReq
 
 	// Debit: Deposit to account (asset increases)
 	debitAmount := req.Amount
+	unitIDPtr := &req.UnitID
 	splits = append(splits, SplitPreview{
 		AccountID:   req.DepositTo,
 		AccountName: depositAccount.AccountName,
 		PeopleID:    nil,
+		UnitID:      unitIDPtr, // Use unit_id from request
 		Debit:       &debitAmount,
 		Credit:      nil,
 		Status:      "1",
@@ -93,6 +95,7 @@ func (s *CreditMemoService) CalculateSplitsForCreditMemo(req CreateCreditMemoReq
 		AccountID:   req.LiabilityAccount,
 		AccountName: liabilityAccount.AccountName,
 		PeopleID:    peopleIDPtr,
+		UnitID:      unitIDPtr, // Use unit_id from request
 		Debit:       nil,
 		Credit:      &creditAmount,
 		Status:      "1",
@@ -214,6 +217,13 @@ func (s *CreditMemoService) CreateCreditMemo(req CreateCreditMemoRequest, userID
 			peopleIDSplit = nil
 		}
 
+		var unitIDSplit interface{}
+		if preview.UnitID != nil {
+			unitIDSplit = *preview.UnitID
+		} else {
+			unitIDSplit = nil
+		}
+
 		var debit interface{}
 		if preview.Debit != nil {
 			debit = *preview.Debit
@@ -229,8 +239,8 @@ func (s *CreditMemoService) CreateCreditMemo(req CreateCreditMemoRequest, userID
 		}
 
 		// Always set status to "1" (active) when creating splits
-		_, err = tx.Exec("INSERT INTO splits (transaction_id, account_id, people_id, debit, credit, status) VALUES (?, ?, ?, ?, ?, ?)",
-			transactionID, preview.AccountID, peopleIDSplit, debit, credit, "1")
+		_, err = tx.Exec("INSERT INTO splits (transaction_id, account_id, people_id, unit_id, debit, credit, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			transactionID, preview.AccountID, peopleIDSplit, unitIDSplit, debit, credit, "1")
 		if err != nil {
 			return nil, fmt.Errorf("failed to create split: %v", err)
 		}
@@ -341,6 +351,13 @@ func (s *CreditMemoService) UpdateCreditMemo(req UpdateCreditMemoRequest, userID
 			peopleIDSplit = nil
 		}
 
+		var unitIDSplit interface{}
+		if preview.UnitID != nil {
+			unitIDSplit = *preview.UnitID
+		} else {
+			unitIDSplit = nil
+		}
+
 		var debit interface{}
 		if preview.Debit != nil {
 			debit = *preview.Debit
@@ -356,8 +373,8 @@ func (s *CreditMemoService) UpdateCreditMemo(req UpdateCreditMemoRequest, userID
 		}
 
 		// Always set status to "1" (active) when creating splits
-		_, err = tx.Exec("INSERT INTO splits (transaction_id, account_id, people_id, debit, credit, status) VALUES (?, ?, ?, ?, ?, ?)",
-			existingCreditMemo.TransactionID, preview.AccountID, peopleIDSplit, debit, credit, "1")
+		_, err = tx.Exec("INSERT INTO splits (transaction_id, account_id, people_id, unit_id, debit, credit, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			existingCreditMemo.TransactionID, preview.AccountID, peopleIDSplit, unitIDSplit, debit, credit, "1")
 		if err != nil {
 			return nil, fmt.Errorf("failed to create split: %v", err)
 		}
@@ -424,8 +441,43 @@ func (s *CreditMemoService) GetCreditMemoByID(id int) (*CreditMemoResponse, erro
 	}, nil
 }
 
-// GetCreditMemosByBuildingID retrieves all credit memos for a building
-func (s *CreditMemoService) GetCreditMemosByBuildingID(buildingID int) ([]CreditMemo, error) {
-	return s.creditMemoRepo.GetByBuildingID(buildingID)
+// GetCreditMemosByBuildingID retrieves all credit memos for a building with used credits and balance
+func (s *CreditMemoService) GetCreditMemosByBuildingID(buildingID int) ([]CreditMemoListItem, error) {
+	creditMemos, err := s.creditMemoRepo.GetByBuildingID(buildingID)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]CreditMemoListItem, 0, len(creditMemos))
+	for _, creditMemo := range creditMemos {
+		// Get used credits (applied amount) for this credit memo using direct SQL query
+		var usedCredits sql.NullFloat64
+		err := s.db.QueryRow("SELECT COALESCE(SUM(amount), 0) FROM invoice_applied_credits WHERE credit_memo_id = ? AND status = '1'", creditMemo.ID).
+			Scan(&usedCredits)
+		if err != nil {
+			// If error, set to 0
+			usedCredits = sql.NullFloat64{Float64: 0, Valid: true}
+		}
+
+		usedCreditsValue := 0.0
+		if usedCredits.Valid {
+			usedCreditsValue = usedCredits.Float64
+		}
+
+		// Calculate balance (amount - used credits)
+		balance := creditMemo.Amount - usedCreditsValue
+
+		// Round to 2 decimal places
+		usedCreditsValue = float64(int(usedCreditsValue*100+0.5)) / 100
+		balance = float64(int(balance*100+0.5)) / 100
+
+		result = append(result, CreditMemoListItem{
+			CreditMemo:  creditMemo,
+			UsedCredits: usedCreditsValue,
+			Balance:     balance,
+		})
+	}
+
+	return result, nil
 }
 

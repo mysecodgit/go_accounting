@@ -30,6 +30,13 @@ func (r *splitRepo) Create(split Split) (Split, error) {
 		peopleID = nil
 	}
 
+	var unitID interface{}
+	if split.UnitID != nil {
+		unitID = *split.UnitID
+	} else {
+		unitID = nil
+	}
+
 	var debit interface{}
 	if split.Debit != nil {
 		debit = *split.Debit
@@ -44,8 +51,8 @@ func (r *splitRepo) Create(split Split) (Split, error) {
 		credit = nil
 	}
 
-	result, err := r.db.Exec("INSERT INTO splits (transaction_id, account_id, people_id, debit, credit, status) VALUES (?, ?, ?, ?, ?, ?)",
-		split.TransactionID, split.AccountID, peopleID, debit, credit, split.Status)
+	result, err := r.db.Exec("INSERT INTO splits (transaction_id, account_id, people_id, unit_id, debit, credit, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		split.TransactionID, split.AccountID, peopleID, unitID, debit, credit, split.Status)
 
 	if err != nil {
 		return split, err
@@ -54,8 +61,8 @@ func (r *splitRepo) Create(split Split) (Split, error) {
 	id, _ := result.LastInsertId()
 	split.ID = int(id)
 
-	err = r.db.QueryRow("SELECT id, transaction_id, account_id, people_id, debit, credit, status, created_at, updated_at FROM splits WHERE id = ?", split.ID).
-		Scan(&split.ID, &split.TransactionID, &split.AccountID, &split.PeopleID, &split.Debit, &split.Credit, &split.Status, &split.CreatedAt, &split.UpdatedAt)
+	err = r.db.QueryRow("SELECT id, transaction_id, account_id, people_id, unit_id, debit, credit, status, created_at, updated_at FROM splits WHERE id = ?", split.ID).
+		Scan(&split.ID, &split.TransactionID, &split.AccountID, &split.PeopleID, &split.UnitID, &split.Debit, &split.Credit, &split.Status, &split.CreatedAt, &split.UpdatedAt)
 
 	return split, err
 }
@@ -105,7 +112,7 @@ func (r *splitRepo) CreateBatch(splits []Split) error {
 }
 
 func (r *splitRepo) GetByTransactionID(transactionID int) ([]Split, error) {
-	rows, err := r.db.Query("SELECT id, transaction_id, account_id, people_id, debit, credit, status, created_at, updated_at FROM splits WHERE transaction_id = ?", transactionID)
+	rows, err := r.db.Query("SELECT id, transaction_id, account_id, people_id, unit_id, debit, credit, status, created_at, updated_at FROM splits WHERE transaction_id = ?", transactionID)
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +121,7 @@ func (r *splitRepo) GetByTransactionID(transactionID int) ([]Split, error) {
 	splits := []Split{}
 	for rows.Next() {
 		var split Split
-		err := rows.Scan(&split.ID, &split.TransactionID, &split.AccountID, &split.PeopleID, &split.Debit, &split.Credit, &split.Status, &split.CreatedAt, &split.UpdatedAt)
+		err := rows.Scan(&split.ID, &split.TransactionID, &split.AccountID, &split.PeopleID, &split.UnitID, &split.Debit, &split.Credit, &split.Status, &split.CreatedAt, &split.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -126,8 +133,8 @@ func (r *splitRepo) GetByTransactionID(transactionID int) ([]Split, error) {
 
 func (r *splitRepo) GetByID(id int) (Split, error) {
 	var split Split
-	err := r.db.QueryRow("SELECT id, transaction_id, account_id, people_id, debit, credit, status, created_at, updated_at FROM splits WHERE id = ?", id).
-		Scan(&split.ID, &split.TransactionID, &split.AccountID, &split.PeopleID, &split.Debit, &split.Credit, &split.Status, &split.CreatedAt, &split.UpdatedAt)
+	err := r.db.QueryRow("SELECT id, transaction_id, account_id, people_id, unit_id, debit, credit, status, created_at, updated_at FROM splits WHERE id = ?", id).
+		Scan(&split.ID, &split.TransactionID, &split.AccountID, &split.PeopleID, &split.UnitID, &split.Debit, &split.Credit, &split.Status, &split.CreatedAt, &split.UpdatedAt)
 
 	if err == sql.ErrNoRows {
 		return split, fmt.Errorf("split not found")
@@ -142,7 +149,7 @@ func (r *splitRepo) GetByAccountIDAndDateRange(accountID int, buildingID int, st
 
 func (r *splitRepo) GetByAccountIDAndDateRangeWithUnit(accountID int, buildingID int, startDate string, endDate string, unitID *int) ([]Split, error) {
 	query := `
-		SELECT s.id, s.transaction_id, s.account_id, s.people_id, s.debit, s.credit, s.status, s.created_at, s.updated_at
+		SELECT s.id, s.transaction_id, s.account_id, s.people_id, s.unit_id, s.debit, s.credit, s.status, s.created_at, s.updated_at
 		FROM splits s
 		INNER JOIN transactions t ON s.transaction_id = t.id
 		WHERE s.account_id = ? AND t.building_id = ? AND s.status = '1' AND t.status = '1'
@@ -175,7 +182,7 @@ func (r *splitRepo) GetByAccountIDAndDateRangeWithUnit(accountID int, buildingID
 	splits := []Split{}
 	for rows.Next() {
 		var split Split
-		err := rows.Scan(&split.ID, &split.TransactionID, &split.AccountID, &split.PeopleID, &split.Debit, &split.Credit, &split.Status, &split.CreatedAt, &split.UpdatedAt)
+		err := rows.Scan(&split.ID, &split.TransactionID, &split.AccountID, &split.PeopleID, &split.UnitID, &split.Debit, &split.Credit, &split.Status, &split.CreatedAt, &split.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}

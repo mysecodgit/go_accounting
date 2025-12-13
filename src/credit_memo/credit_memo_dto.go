@@ -21,6 +21,7 @@ type SplitPreview struct {
 	AccountID   int      `json:"account_id"`
 	AccountName string   `json:"account_name"`
 	PeopleID    *int     `json:"people_id"`
+	UnitID      *int     `json:"unit_id"`
 	Debit       *float64 `json:"debit"`
 	Credit      *float64 `json:"credit"`
 	Status      string   `json:"status"`
@@ -51,5 +52,11 @@ type CreditMemoResponse struct {
 	CreditMemo  CreditMemo              `json:"credit_memo"`
 	Splits      []splits.Split          `json:"splits"`
 	Transaction transactions.Transaction `json:"transaction"`
+}
+
+type CreditMemoListItem struct {
+	CreditMemo  CreditMemo `json:"credit_memo"`
+	UsedCredits float64    `json:"used_credits"`
+	Balance     float64    `json:"balance"`
 }
 

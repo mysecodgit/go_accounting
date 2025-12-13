@@ -82,6 +82,7 @@ func (s *CheckService) CalculateSplitsForCheck(req CreateCheckRequest, userID in
 			AccountID:   expenseLine.AccountID,
 			AccountName: account.AccountName,
 			PeopleID:    expenseLine.PeopleID,
+			UnitID:      expenseLine.UnitID, // Include unit_id if provided
 			Debit:       &debitAmount,
 			Credit:      nil,
 			Status:      "1",
@@ -94,6 +95,7 @@ func (s *CheckService) CalculateSplitsForCheck(req CreateCheckRequest, userID in
 		AccountID:   req.PaymentAccountID,
 		AccountName: paymentAccount.AccountName,
 		PeopleID:    nil,
+		UnitID:      nil, // Payment account doesn't have unit_id
 		Debit:       nil,
 		Credit:      &creditAmount,
 		Status:      "1",
@@ -272,6 +274,13 @@ func (s *CheckService) CreateCheck(req CreateCheckRequest, userID int) (*CheckRe
 			peopleIDSplit = nil
 		}
 
+		var unitIDSplit interface{}
+		if preview.UnitID != nil {
+			unitIDSplit = *preview.UnitID
+		} else {
+			unitIDSplit = nil
+		}
+
 		var debit interface{}
 		if preview.Debit != nil {
 			debit = *preview.Debit
@@ -287,8 +296,8 @@ func (s *CheckService) CreateCheck(req CreateCheckRequest, userID int) (*CheckRe
 		}
 
 		// Always set status to "1" (active) when creating splits
-		_, err = tx.Exec("INSERT INTO splits (transaction_id, account_id, people_id, debit, credit, status) VALUES (?, ?, ?, ?, ?, ?)",
-			transactionID, preview.AccountID, peopleIDSplit, debit, credit, "1")
+		_, err = tx.Exec("INSERT INTO splits (transaction_id, account_id, people_id, unit_id, debit, credit, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			transactionID, preview.AccountID, peopleIDSplit, unitIDSplit, debit, credit, "1")
 		if err != nil {
 			return nil, fmt.Errorf("failed to create split: %v", err)
 		}
@@ -465,6 +474,13 @@ func (s *CheckService) UpdateCheck(req UpdateCheckRequest, userID int) (*CheckRe
 			peopleIDSplit = nil
 		}
 
+		var unitIDSplit interface{}
+		if preview.UnitID != nil {
+			unitIDSplit = *preview.UnitID
+		} else {
+			unitIDSplit = nil
+		}
+
 		var debit interface{}
 		if preview.Debit != nil {
 			debit = *preview.Debit
@@ -480,8 +496,8 @@ func (s *CheckService) UpdateCheck(req UpdateCheckRequest, userID int) (*CheckRe
 		}
 
 		// Always set status to "1" (active) when creating splits
-		_, err = tx.Exec("INSERT INTO splits (transaction_id, account_id, people_id, debit, credit, status) VALUES (?, ?, ?, ?, ?, ?)",
-			existingCheck.TransactionID, preview.AccountID, peopleIDSplit, debit, credit, "1")
+		_, err = tx.Exec("INSERT INTO splits (transaction_id, account_id, people_id, unit_id, debit, credit, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			existingCheck.TransactionID, preview.AccountID, peopleIDSplit, unitIDSplit, debit, credit, "1")
 		if err != nil {
 			return nil, fmt.Errorf("failed to create split: %v", err)
 		}

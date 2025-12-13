@@ -94,6 +94,7 @@ func (s *JournalService) CalculateSplitsForJournal(req CreateJournalRequest, use
 			AccountID:   line.AccountID,
 			AccountName: account.AccountName,
 			PeopleID:    line.PeopleID,
+			UnitID:      line.UnitID, // Include unit_id if provided
 			Debit:       debitAmount,
 			Credit:      creditAmount,
 			Status:      "1",
@@ -270,6 +271,13 @@ func (s *JournalService) CreateJournal(req CreateJournalRequest, userID int) (*J
 			peopleIDSplit = nil
 		}
 
+		var unitIDSplit interface{}
+		if preview.UnitID != nil {
+			unitIDSplit = *preview.UnitID
+		} else {
+			unitIDSplit = nil
+		}
+
 		var debit interface{}
 		if preview.Debit != nil {
 			debit = *preview.Debit
@@ -285,8 +293,8 @@ func (s *JournalService) CreateJournal(req CreateJournalRequest, userID int) (*J
 		}
 
 		// Always set status to "1" (active) when creating splits
-		_, err = tx.Exec("INSERT INTO splits (transaction_id, account_id, people_id, debit, credit, status) VALUES (?, ?, ?, ?, ?, ?)",
-			transactionID, preview.AccountID, peopleIDSplit, debit, credit, "1")
+		_, err = tx.Exec("INSERT INTO splits (transaction_id, account_id, people_id, unit_id, debit, credit, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			transactionID, preview.AccountID, peopleIDSplit, unitIDSplit, debit, credit, "1")
 		if err != nil {
 			return nil, fmt.Errorf("failed to create split: %v", err)
 		}
@@ -461,6 +469,13 @@ func (s *JournalService) UpdateJournal(req UpdateJournalRequest, userID int) (*J
 			peopleIDSplit = nil
 		}
 
+		var unitIDSplit interface{}
+		if preview.UnitID != nil {
+			unitIDSplit = *preview.UnitID
+		} else {
+			unitIDSplit = nil
+		}
+
 		var debit interface{}
 		if preview.Debit != nil {
 			debit = *preview.Debit
@@ -476,8 +491,8 @@ func (s *JournalService) UpdateJournal(req UpdateJournalRequest, userID int) (*J
 		}
 
 		// Always set status to "1" (active) when creating splits
-		_, err = tx.Exec("INSERT INTO splits (transaction_id, account_id, people_id, debit, credit, status) VALUES (?, ?, ?, ?, ?, ?)",
-			existingJournal.TransactionID, preview.AccountID, peopleIDSplit, debit, credit, "1")
+		_, err = tx.Exec("INSERT INTO splits (transaction_id, account_id, people_id, unit_id, debit, credit, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			existingJournal.TransactionID, preview.AccountID, peopleIDSplit, unitIDSplit, debit, credit, "1")
 		if err != nil {
 			return nil, fmt.Errorf("failed to create split: %v", err)
 		}

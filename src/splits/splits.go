@@ -5,6 +5,7 @@ type Split struct {
 	TransactionID int     `json:"transaction_id"`
 	AccountID     int     `json:"account_id"`
 	PeopleID      *int    `json:"people_id"`
+	UnitID        *int    `json:"unit_id"`
 	Debit         *float64 `json:"debit"`
 	Credit        *float64 `json:"credit"`
 	Status        string  `json:"status"`
