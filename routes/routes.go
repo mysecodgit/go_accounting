@@ -8,7 +8,9 @@ import (
 	"github.com/mysecodgit/go_accounting/src/accounts"
 	"github.com/mysecodgit/go_accounting/src/building"
 	"github.com/mysecodgit/go_accounting/src/checks"
+	"github.com/mysecodgit/go_accounting/src/credit_memo"
 	"github.com/mysecodgit/go_accounting/src/expense_lines"
+	"github.com/mysecodgit/go_accounting/src/invoice_applied_credits"
 	"github.com/mysecodgit/go_accounting/src/invoice_items"
 	"github.com/mysecodgit/go_accounting/src/invoice_payments"
 	"github.com/mysecodgit/go_accounting/src/invoices"
@@ -75,6 +77,18 @@ func SetupRoutes(r *gin.Engine) {
 	accountTypeRepoForChecks := account_types.NewAccountTypeRepository(config.DB)
 	checkService := checks.NewCheckService(checkRepo, expenseLineRepo, transactionRepo, splitRepo, accountRepoForInvoice, accountTypeRepoForChecks, config.DB)
 	checkHandler := checks.NewCheckHandler(checkService)
+
+	// Initialize credit memo dependencies
+	creditMemoRepo := credit_memo.NewCreditMemoRepository(config.DB)
+	peopleRepoForCreditMemo := people.NewPersonRepository(config.DB)
+	accountTypeRepoForCreditMemo := account_types.NewAccountTypeRepository(config.DB)
+	creditMemoService := credit_memo.NewCreditMemoService(creditMemoRepo, transactionRepo, splitRepo, accountRepoForInvoice, accountTypeRepoForCreditMemo, peopleRepoForCreditMemo, config.DB)
+	creditMemoHandler := credit_memo.NewCreditMemoHandler(creditMemoService)
+
+	// Initialize invoice applied credits dependencies
+	appliedCreditRepo := invoice_applied_credits.NewInvoiceAppliedCreditRepository(config.DB)
+	appliedCreditService := invoice_applied_credits.NewInvoiceAppliedCreditService(appliedCreditRepo, invoiceRepo, creditMemoRepo, transactionRepo, splitRepo, accountRepoForInvoice, config.DB)
+	appliedCreditHandler := invoice_applied_credits.NewInvoiceAppliedCreditHandler(appliedCreditService)
 
 	// Initialize journal dependencies
 	journalRepo := journal.NewJournalRepository(config.DB)
@@ -148,13 +162,21 @@ func SetupRoutes(r *gin.Engine) {
 		buildingRoutes.GET("/:id/invoices", invoiceHandler.GetInvoices)
 		// Payments route must come before single invoice route to avoid conflict (more specific route first)
 		buildingRoutes.GET("/:id/invoices/:invoiceId/payments", paymentHandler.GetPaymentsByInvoice)
+		// Applied credits routes (must come before single invoice route)
+		buildingRoutes.GET("/:id/invoices/:invoiceId/available-credits", appliedCreditHandler.GetAvailableCredits)
+		buildingRoutes.POST("/:id/invoices/:invoiceId/preview-apply-credit", appliedCreditHandler.PreviewApplyCredit)
+		buildingRoutes.POST("/:id/invoices/:invoiceId/apply-credit", appliedCreditHandler.ApplyCreditToInvoice)
+		buildingRoutes.GET("/:id/invoices/:invoiceId/applied-credits", appliedCreditHandler.GetAppliedCredits)
+		buildingRoutes.DELETE("/:id/invoice-applied-credits/:appliedCreditId", appliedCreditHandler.DeleteAppliedCredit)
 		buildingRoutes.PUT("/:id/invoices/:invoiceId", invoiceHandler.UpdateInvoice)
 		buildingRoutes.GET("/:id/invoices/:invoiceId", invoiceHandler.GetInvoice)
 
 		// Invoice Payment routes (building-scoped)
+		buildingRoutes.POST("/:id/invoice-payments/preview", paymentHandler.PreviewInvoicePayment)
 		buildingRoutes.POST("/:id/invoice-payments", paymentHandler.CreateInvoicePayment)
 		buildingRoutes.GET("/:id/invoice-payments", paymentHandler.GetInvoicePayments)
 		buildingRoutes.GET("/:id/invoice-payments/:paymentId", paymentHandler.GetInvoicePayment)
+		buildingRoutes.PUT("/:id/invoice-payments/:paymentId", paymentHandler.UpdateInvoicePayment)
 
 		// Reports routes (building-scoped)
 		buildingRoutes.GET("/:id/reports/balance-sheet", reportsHandler.GetBalanceSheet)
@@ -176,6 +198,13 @@ func SetupRoutes(r *gin.Engine) {
 		buildingRoutes.GET("/:id/checks", checkHandler.GetChecks)
 		buildingRoutes.PUT("/:id/checks/:checkId", checkHandler.UpdateCheck)
 		buildingRoutes.GET("/:id/checks/:checkId", checkHandler.GetCheck)
+
+		// Credit Memo routes (building-scoped)
+		buildingRoutes.POST("/:id/credit-memos/preview", creditMemoHandler.PreviewCreditMemo)
+		buildingRoutes.POST("/:id/credit-memos", creditMemoHandler.CreateCreditMemo)
+		buildingRoutes.GET("/:id/credit-memos", creditMemoHandler.GetCreditMemosByBuildingID)
+		buildingRoutes.PUT("/:id/credit-memos/:creditMemoId", creditMemoHandler.UpdateCreditMemo)
+		buildingRoutes.GET("/:id/credit-memos/:creditMemoId", creditMemoHandler.GetCreditMemoByID)
 
 		// Journal routes (building-scoped)
 		buildingRoutes.POST("/:id/journals/preview", journalHandler.PreviewJournal)

@@ -11,6 +11,7 @@ type SplitRepository interface {
 	GetByTransactionID(transactionID int) ([]Split, error)
 	GetByID(id int) (Split, error)
 	GetByAccountIDAndDateRange(accountID int, buildingID int, startDate string, endDate string) ([]Split, error)
+	GetByAccountIDAndDateRangeWithUnit(accountID int, buildingID int, startDate string, endDate string, unitID *int) ([]Split, error)
 }
 
 type splitRepo struct {
@@ -136,6 +137,10 @@ func (r *splitRepo) GetByID(id int) (Split, error) {
 }
 
 func (r *splitRepo) GetByAccountIDAndDateRange(accountID int, buildingID int, startDate string, endDate string) ([]Split, error) {
+	return r.GetByAccountIDAndDateRangeWithUnit(accountID, buildingID, startDate, endDate, nil)
+}
+
+func (r *splitRepo) GetByAccountIDAndDateRangeWithUnit(accountID int, buildingID int, startDate string, endDate string, unitID *int) ([]Split, error) {
 	query := `
 		SELECT s.id, s.transaction_id, s.account_id, s.people_id, s.debit, s.credit, s.status, s.created_at, s.updated_at
 		FROM splits s
@@ -152,6 +157,11 @@ func (r *splitRepo) GetByAccountIDAndDateRange(accountID int, buildingID int, st
 	if endDate != "" {
 		query += " AND t.transaction_date <= ?"
 		args = append(args, endDate)
+	}
+	
+	if unitID != nil && *unitID > 0 {
+		query += " AND t.unit_id = ?"
+		args = append(args, *unitID)
 	}
 	
 	query += " ORDER BY t.transaction_date, s.id"

@@ -7,6 +7,7 @@ import (
 
 type InvoicePaymentRepository interface {
 	Create(payment InvoicePayment) (InvoicePayment, error)
+	Update(payment InvoicePayment) (InvoicePayment, error)
 	GetByID(id int) (InvoicePayment, error)
 	GetByInvoiceID(invoiceID int) ([]InvoicePayment, error)
 	GetByBuildingID(buildingID int) ([]InvoicePayment, error)
@@ -30,6 +31,20 @@ func (r *invoicePaymentRepo) Create(payment InvoicePayment) (InvoicePayment, err
 
 	id, _ := result.LastInsertId()
 	payment.ID = int(id)
+
+	err = r.db.QueryRow("SELECT id, transaction_id, date, invoice_id, user_id, account_id, amount, status, createdAt, updatedAt FROM invoice_payments WHERE id = ?", payment.ID).
+		Scan(&payment.ID, &payment.TransactionID, &payment.Date, &payment.InvoiceID, &payment.UserID, &payment.AccountID, &payment.Amount, &payment.Status, &payment.CreatedAt, &payment.UpdatedAt)
+
+	return payment, err
+}
+
+func (r *invoicePaymentRepo) Update(payment InvoicePayment) (InvoicePayment, error) {
+	_, err := r.db.Exec("UPDATE invoice_payments SET date = ?, account_id = ?, amount = ?, status = ? WHERE id = ?",
+		payment.Date, payment.AccountID, payment.Amount, payment.Status, payment.ID)
+
+	if err != nil {
+		return payment, err
+	}
 
 	err = r.db.QueryRow("SELECT id, transaction_id, date, invoice_id, user_id, account_id, amount, status, createdAt, updatedAt FROM invoice_payments WHERE id = ?", payment.ID).
 		Scan(&payment.ID, &payment.TransactionID, &payment.Date, &payment.InvoiceID, &payment.UserID, &payment.AccountID, &payment.Amount, &payment.Status, &payment.CreatedAt, &payment.UpdatedAt)

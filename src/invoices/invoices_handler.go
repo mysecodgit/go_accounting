@@ -112,7 +112,7 @@ func (h *InvoiceHandler) GetInvoices(c *gin.Context) {
 		return
 	}
 
-	invoices, err := h.service.GetInvoiceRepo().GetByBuildingID(buildingID)
+	invoices, err := h.service.GetInvoiceRepo().GetByBuildingIDWithTotals(buildingID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

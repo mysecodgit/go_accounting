@@ -220,6 +220,13 @@ func (h *ReportsHandler) GetTransactionDetailsByAccount(c *gin.Context) {
 		}
 	}
 
+	if unitIDStr := c.Query("unit_id"); unitIDStr != "" {
+		unitID, err := strconv.Atoi(unitIDStr)
+		if err == nil {
+			req.UnitID = &unitID
+		}
+	}
+
 	req.StartDate = c.Query("start_date")
 	req.EndDate = c.Query("end_date")
 

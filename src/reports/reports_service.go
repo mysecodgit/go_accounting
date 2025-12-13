@@ -721,8 +721,8 @@ func (s *ReportsService) GetTransactionDetailsByAccount(req TransactionDetailsBy
 	for i, account := range accountsList {
 		accountType := accountTypesList[i]
 
-		// Get splits for this account within date range
-		splits, err := s.splitRepo.GetByAccountIDAndDateRange(account.ID, req.BuildingID, req.StartDate, req.EndDate)
+		// Get splits for this account within date range (with optional unit filter)
+		splits, err := s.splitRepo.GetByAccountIDAndDateRangeWithUnit(account.ID, req.BuildingID, req.StartDate, req.EndDate, req.UnitID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get splits for account %d: %v", account.ID, err)
 		}
@@ -731,9 +731,18 @@ func (s *ReportsService) GetTransactionDetailsByAccount(req TransactionDetailsBy
 			continue // Skip accounts with no transactions
 		}
 
+		// Get initial balance before start date (using typeStatus)
+		initialBalance, err := s.calculateAccountBalanceBeforeDate(account.ID, req.StartDate)
+		if err != nil {
+			return nil, fmt.Errorf("failed to calculate initial balance for account %d: %v", account.ID, err)
+		}
+
+		// Get account type status to determine how balance changes
+		typeStatusLower := strings.ToLower(accountType.TypeStatus)
+
 		// Build transaction details for each split
 		splitDetails := []TransactionDetailSplit{}
-		runningBalance := 0.0
+		runningBalance := initialBalance
 		accountTotalDebit := 0.0
 		accountTotalCredit := 0.0
 
@@ -753,19 +762,29 @@ func (s *ReportsService) GetTransactionDetailsByAccount(req TransactionDetailsBy
 				}
 			}
 
-			// Calculate running balance
+			// Calculate running balance based on account type status
 			debitAmount := 0.0
 			if split.Debit != nil {
 				debitAmount = *split.Debit
-				runningBalance += debitAmount
 				accountTotalDebit += debitAmount
 			}
 
 			creditAmount := 0.0
 			if split.Credit != nil {
 				creditAmount = *split.Credit
-				runningBalance -= creditAmount
 				accountTotalCredit += creditAmount
+			}
+
+			// Update running balance based on typeStatus
+			// Debit accounts (Assets, Expenses): increase with debits, decrease with credits
+			// Credit accounts (Liabilities, Equity, Income): increase with credits, decrease with debits
+			if typeStatusLower == "debit" {
+				runningBalance += debitAmount
+				runningBalance -= creditAmount
+			} else {
+				// Credit account
+				runningBalance += creditAmount
+				runningBalance -= debitAmount
 			}
 
 			splitDetails = append(splitDetails, TransactionDetailSplit{

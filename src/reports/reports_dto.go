@@ -96,6 +96,7 @@ type TrialBalanceResponse struct {
 type TransactionDetailsByAccountRequest struct {
 	BuildingID int    `json:"building_id"`
 	AccountID  *int   `json:"account_id"` // Optional: filter by specific account
+	UnitID     *int   `json:"unit_id"`    // Optional: filter by specific unit
 	StartDate  string `json:"start_date"`
 	EndDate    string `json:"end_date"`
 }

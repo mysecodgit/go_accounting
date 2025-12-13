@@ -77,22 +77,26 @@ func (h *InvoicePaymentHandler) GetInvoicePayments(c *gin.Context) {
 	c.JSON(http.StatusOK, payments)
 }
 
-// GET /invoice-payments/:id
+// GET /invoice-payments/:id or /buildings/:id/invoice-payments/:paymentId
 func (h *InvoicePaymentHandler) GetInvoicePayment(c *gin.Context) {
-	idStr := c.Param("id")
+	// For building-scoped routes, use paymentId; for legacy routes, use id
+	idStr := c.Param("paymentId")
+	if idStr == "" {
+		idStr = c.Param("id")
+	}
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Payment ID"})
 		return
 	}
 
-	payment, err := h.service.GetPaymentRepo().GetByID(id)
+	response, err := h.service.GetInvoicePaymentWithDetails(id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, payment)
+	c.JSON(http.StatusOK, response)
 }
 
 // GET /invoices/:id/payments or /buildings/:id/invoices/:invoiceId/payments
@@ -116,4 +120,80 @@ func (h *InvoicePaymentHandler) GetPaymentsByInvoice(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, payments)
+}
+
+// POST /buildings/:id/invoice-payments/preview
+func (h *InvoicePaymentHandler) PreviewInvoicePayment(c *gin.Context) {
+	var req CreateInvoicePaymentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+		return
+	}
+
+	buildingIDStr := c.Param("id")
+	if buildingIDStr != "" {
+		buildingID, err := strconv.Atoi(buildingIDStr)
+		if err == nil {
+			req.BuildingID = buildingID
+		}
+	}
+
+	preview, err := h.service.PreviewInvoicePayment(req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, preview)
+}
+
+// PUT /buildings/:id/invoice-payments/:paymentId
+func (h *InvoicePaymentHandler) UpdateInvoicePayment(c *gin.Context) {
+	paymentIDStr := c.Param("paymentId")
+	if paymentIDStr == "" {
+		paymentIDStr = c.Param("id")
+	}
+
+	paymentID, err := strconv.Atoi(paymentIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Payment ID"})
+		return
+	}
+
+	var req UpdateInvoicePaymentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+		return
+	}
+
+	buildingIDStr := c.Param("id")
+	if buildingIDStr != "" {
+		buildingID, err := strconv.Atoi(buildingIDStr)
+		if err == nil {
+			req.BuildingID = buildingID
+		}
+	}
+
+	userIDStr := c.GetHeader("User-ID")
+	if userIDStr == "" {
+		userIDStr = c.Query("user_id")
+	}
+	if userIDStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "User ID is required"})
+		return
+	}
+
+	userID, err := strconv.Atoi(userIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid User ID"})
+		return
+	}
+
+	response, err := h.service.UpdateInvoicePayment(paymentID, req, userID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
 }

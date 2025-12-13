@@ -69,3 +69,25 @@ type InvoiceResponse struct {
 	Transaction transactions.Transaction  `json:"transaction"`
 }
 
+type InvoiceListItem struct {
+	ID                 int     `json:"id"`
+	InvoiceNo          int     `json:"invoice_no"`
+	TransactionID      int     `json:"transaction_id"`
+	SalesDate          string  `json:"sales_date"`
+	DueDate            string  `json:"due_date"`
+	ARAccountID        *int    `json:"ar_account_id"`
+	UnitID             *int    `json:"unit_id"`
+	PeopleID           *int    `json:"people_id"`
+	UserID             int     `json:"user_id"`
+	Amount             float64 `json:"amount"`
+	Description        string  `json:"description"`
+	Reference          string  `json:"refrence"`
+	CancelReason       *string `json:"cancel_reason"`
+	Status             int     `json:"status"`
+	BuildingID         int     `json:"building_id"`
+	CreatedAt          string  `json:"created_at"`
+	UpdatedAt          string  `json:"updated_at"`
+	PaidAmount         float64 `json:"paid_amount"`
+	AppliedCreditsTotal float64 `json:"applied_credits_total"`
+}
+
