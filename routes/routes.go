@@ -10,6 +10,7 @@ import (
 	"github.com/mysecodgit/go_accounting/src/checks"
 	"github.com/mysecodgit/go_accounting/src/credit_memo"
 	"github.com/mysecodgit/go_accounting/src/expense_lines"
+	"github.com/mysecodgit/go_accounting/src/leases"
 	"github.com/mysecodgit/go_accounting/src/invoice_applied_credits"
 	"github.com/mysecodgit/go_accounting/src/invoice_items"
 	"github.com/mysecodgit/go_accounting/src/invoice_payments"
@@ -205,6 +206,25 @@ func SetupRoutes(r *gin.Engine) {
 		buildingRoutes.GET("/:id/credit-memos", creditMemoHandler.GetCreditMemosByBuildingID)
 		buildingRoutes.PUT("/:id/credit-memos/:creditMemoId", creditMemoHandler.UpdateCreditMemo)
 		buildingRoutes.GET("/:id/credit-memos/:creditMemoId", creditMemoHandler.GetCreditMemoByID)
+
+		// Lease routes (building-scoped)
+		leaseRepo := leases.NewLeaseRepository(config.DB)
+		leaseFileRepo := leases.NewLeaseFileRepository(config.DB)
+		peopleRepoForLease := people.NewPersonRepository(config.DB)
+		peopleTypeRepoForLease := people_types.NewPeopleTypeRepository(config.DB)
+		leaseService := leases.NewLeaseService(leaseRepo, leaseFileRepo, peopleRepoForLease, peopleTypeRepoForLease, config.DB)
+		leaseHandler := leases.NewLeaseHandler(leaseService)
+
+		buildingRoutes.GET("/:id/leases/customers", leaseHandler.GetCustomers)
+		buildingRoutes.GET("/:id/leases/available-units", leaseHandler.GetAvailableUnits)
+		buildingRoutes.POST("/:id/leases", leaseHandler.CreateLease)
+		buildingRoutes.GET("/:id/leases", leaseHandler.GetLeasesByBuildingID)
+		buildingRoutes.GET("/:id/leases/:leaseId", leaseHandler.GetLeaseByID)
+		buildingRoutes.PUT("/:id/leases/:leaseId", leaseHandler.UpdateLease)
+		buildingRoutes.DELETE("/:id/leases/:leaseId", leaseHandler.DeleteLease)
+		buildingRoutes.POST("/:id/leases/:leaseId/files", leaseHandler.UploadLeaseFile)
+		buildingRoutes.GET("/:id/leases/:leaseId/files/:fileId/download", leaseHandler.DownloadLeaseFile)
+		buildingRoutes.DELETE("/:id/leases/:leaseId/files/:fileId", leaseHandler.DeleteLeaseFile)
 
 		// Journal routes (building-scoped)
 		buildingRoutes.POST("/:id/journals/preview", journalHandler.PreviewJournal)
