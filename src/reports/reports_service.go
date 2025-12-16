@@ -347,18 +347,20 @@ func (s *ReportsService) GetTrialBalance(req TrialBalanceRequest) (*TrialBalance
 			}
 		}
 
-		// Include all accounts (even with zero balance)
-		trialBalanceAccounts = append(trialBalanceAccounts, TrialBalanceAccount{
-			AccountID:     account.ID,
-			AccountNumber: account.AccountNumber,
-			AccountName:   account.AccountName,
-			AccountType:   accountType.TypeName,
-			DebitBalance:  debitBalance,
-			CreditBalance: creditBalance,
-		})
+		// Only include accounts that have debit or credit (active splits)
+		if debitBalance > 0 || creditBalance > 0 {
+			trialBalanceAccounts = append(trialBalanceAccounts, TrialBalanceAccount{
+				AccountID:     account.ID,
+				AccountNumber: account.AccountNumber,
+				AccountName:   account.AccountName,
+				AccountType:   accountType.TypeName,
+				DebitBalance:  debitBalance,
+				CreditBalance: creditBalance,
+			})
 
-		totalDebit += debitBalance
-		totalCredit += creditBalance
+			totalDebit += debitBalance
+			totalCredit += creditBalance
+		}
 	}
 
 	// Check if balanced (allowing for small rounding differences)

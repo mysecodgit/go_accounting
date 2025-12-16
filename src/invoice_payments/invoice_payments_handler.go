@@ -68,7 +68,26 @@ func (h *InvoicePaymentHandler) GetInvoicePayments(c *gin.Context) {
 		return
 	}
 
-	payments, err := h.service.GetPaymentRepo().GetByBuildingID(buildingID)
+	// Get filter parameters from query string
+	var startDate, endDate, status *string
+	var peopleID *int
+
+	if startDateStr := c.Query("start_date"); startDateStr != "" {
+		startDate = &startDateStr
+	}
+	if endDateStr := c.Query("end_date"); endDateStr != "" {
+		endDate = &endDateStr
+	}
+	if statusStr := c.Query("status"); statusStr != "" {
+		status = &statusStr
+	}
+	if peopleIDStr := c.Query("people_id"); peopleIDStr != "" {
+		if pid, err := strconv.Atoi(peopleIDStr); err == nil {
+			peopleID = &pid
+		}
+	}
+
+	payments, err := h.service.GetPaymentRepo().GetByBuildingIDWithFilters(buildingID, startDate, endDate, peopleID, status)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

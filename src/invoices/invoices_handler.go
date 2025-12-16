@@ -112,7 +112,26 @@ func (h *InvoiceHandler) GetInvoices(c *gin.Context) {
 		return
 	}
 
-	invoices, err := h.service.GetInvoiceRepo().GetByBuildingIDWithTotals(buildingID)
+	// Get filter parameters from query string
+	var startDate, endDate, status *string
+	var peopleID *int
+
+	if startDateStr := c.Query("start_date"); startDateStr != "" {
+		startDate = &startDateStr
+	}
+	if endDateStr := c.Query("end_date"); endDateStr != "" {
+		endDate = &endDateStr
+	}
+	if statusStr := c.Query("status"); statusStr != "" {
+		status = &statusStr
+	}
+	if peopleIDStr := c.Query("people_id"); peopleIDStr != "" {
+		if pid, err := strconv.Atoi(peopleIDStr); err == nil {
+			peopleID = &pid
+		}
+	}
+
+	invoices, err := h.service.GetInvoiceRepo().GetByBuildingIDWithTotalsAndFilters(buildingID, startDate, endDate, peopleID, status)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -128,7 +147,7 @@ func (h *InvoiceHandler) GetInvoice(c *gin.Context) {
 	if idStr == "" {
 		idStr = c.Param("id")
 	}
-	
+
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ID"})
@@ -169,7 +188,7 @@ func (h *InvoiceHandler) UpdateInvoice(c *gin.Context) {
 	if invoiceIDStr == "" {
 		invoiceIDStr = c.Param("id")
 	}
-	
+
 	id, err := strconv.Atoi(invoiceIDStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Invoice ID"})
@@ -221,4 +240,3 @@ func (h *InvoiceHandler) UpdateInvoice(c *gin.Context) {
 
 	c.JSON(http.StatusOK, response)
 }
-

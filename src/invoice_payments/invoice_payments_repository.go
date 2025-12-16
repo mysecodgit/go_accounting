@@ -11,6 +11,7 @@ type InvoicePaymentRepository interface {
 	GetByID(id int) (InvoicePayment, error)
 	GetByInvoiceID(invoiceID int) ([]InvoicePayment, error)
 	GetByBuildingID(buildingID int) ([]InvoicePayment, error)
+	GetByBuildingIDWithFilters(buildingID int, startDate, endDate *string, peopleID *int, status *string) ([]InvoicePayment, error)
 }
 
 type invoicePaymentRepo struct {
@@ -85,14 +86,44 @@ func (r *invoicePaymentRepo) GetByInvoiceID(invoiceID int) ([]InvoicePayment, er
 }
 
 func (r *invoicePaymentRepo) GetByBuildingID(buildingID int) ([]InvoicePayment, error) {
-	// Join with invoices table to filter by building_id
-	rows, err := r.db.Query(`
+	return r.GetByBuildingIDWithFilters(buildingID, nil, nil, nil, nil)
+}
+
+func (r *invoicePaymentRepo) GetByBuildingIDWithFilters(buildingID int, startDate, endDate *string, peopleID *int, status *string) ([]InvoicePayment, error) {
+	// Join with invoices table to filter by building_id and other filters
+	query := `
 		SELECT ip.id, ip.transaction_id, ip.reference, ip.date, ip.invoice_id, ip.user_id, ip.account_id, ip.amount, ip.status, ip.createdAt, ip.updatedAt 
 		FROM invoice_payments ip
 		INNER JOIN invoices i ON ip.invoice_id = i.id
 		WHERE i.building_id = ?
-		ORDER BY ip.createdAt DESC
-	`, buildingID)
+	`
+	
+	args := []interface{}{buildingID}
+	
+	// Add filters
+	if startDate != nil && *startDate != "" {
+		query += " AND DATE(ip.date) >= ?"
+		args = append(args, *startDate)
+	}
+	
+	if endDate != nil && *endDate != "" {
+		query += " AND DATE(ip.date) <= ?"
+		args = append(args, *endDate)
+	}
+	
+	if peopleID != nil && *peopleID > 0 {
+		query += " AND i.people_id = ?"
+		args = append(args, *peopleID)
+	}
+	
+	if status != nil && *status != "" {
+		query += " AND ip.status = ?"
+		args = append(args, *status)
+	}
+	
+	query += " ORDER BY ip.createdAt DESC"
+	
+	rows, err := r.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}

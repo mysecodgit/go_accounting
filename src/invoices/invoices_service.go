@@ -138,15 +138,21 @@ func (s *InvoiceService) CalculateSplitsForInvoice(req CreateInvoiceRequest, use
 			rate = item.AvgCost
 		}
 
-		// Calculate total: qty * rate
-		// For discount/payment items, qty should be 1 (enforced by frontend, but ensure here too)
-		if item.Type == "discount" || item.Type == "payment" {
-			// Force qty to 1 for discount/payment items
-			itemTotal = math.Abs(rate) // Use absolute value of rate, qty is implicitly 1
-		} else if itemInput.Qty != nil {
-			itemTotal = *itemInput.Qty * rate
+		// Use manually edited total if provided, otherwise calculate from qty * rate
+		if itemInput.Total != nil {
+			// Use the manually edited total from the input
+			itemTotal = *itemInput.Total
 		} else {
-			itemTotal = rate
+			// Calculate total: qty * rate
+			// For discount/payment items, qty should be 1 (enforced by frontend, but ensure here too)
+			if item.Type == "discount" || item.Type == "payment" {
+				// Force qty to 1 for discount/payment items
+				itemTotal = math.Abs(rate) // Use absolute value of rate, qty is implicitly 1
+			} else if itemInput.Qty != nil {
+				itemTotal = *itemInput.Qty * rate
+			} else {
+				itemTotal = rate
+			}
 		}
 
 		// Categorize by item type
@@ -182,8 +188,9 @@ func (s *InvoiceService) CalculateSplitsForInvoice(req CreateInvoiceRequest, use
 		}
 	}
 
-	// Calculate A/R amount = service total - discount - payment
-	arAmount := serviceTotalAmount - discountTotal - paymentTotal
+	// Use the amount from the request (which matches the amount input field)
+	// This ensures the AR split matches exactly what the user entered
+	arAmount := req.Amount
 
 	// Create splits
 	// Use unit_id from request for all splits
@@ -701,13 +708,20 @@ func (s *InvoiceService) UpdateInvoice(req UpdateInvoiceRequest, userID int) (*I
 			rate = item.AvgCost
 		}
 
-		// For discount/payment items, use absolute value of rate (qty is implicitly 1)
-		if item.Type == "discount" || item.Type == "payment" {
-			total = math.Abs(rate)
-		} else if itemInput.Qty != nil {
-			total = *itemInput.Qty * rate
+		// Use manually edited total if provided, otherwise calculate from qty * rate
+		if itemInput.Total != nil {
+			// Use the manually edited total from the input
+			total = *itemInput.Total
 		} else {
-			total = rate
+			// Calculate total: qty * rate
+			// For discount/payment items, use absolute value of rate (qty is implicitly 1)
+			if item.Type == "discount" || item.Type == "payment" {
+				total = math.Abs(rate)
+			} else if itemInput.Qty != nil {
+				total = *itemInput.Qty * rate
+			} else {
+				total = rate
+			}
 		}
 
 		var previousValue interface{}

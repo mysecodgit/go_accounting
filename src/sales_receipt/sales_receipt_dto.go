@@ -10,6 +10,7 @@ type ReceiptItemInput struct {
 	ItemID        int      `json:"item_id"`
 	Qty           *float64 `json:"qty"`
 	Rate          *string  `json:"rate"`
+	Total         *float64 `json:"total"` // Use manually edited total if provided
 	PreviousValue *float64 `json:"previous_value"`
 	CurrentValue  *float64 `json:"current_value"`
 }

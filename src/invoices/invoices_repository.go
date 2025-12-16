@@ -11,6 +11,7 @@ type InvoiceRepository interface {
 	GetByID(id int) (Invoice, error)
 	GetByBuildingID(buildingID int) ([]Invoice, error)
 	GetByBuildingIDWithTotals(buildingID int) ([]InvoiceListItem, error)
+	GetByBuildingIDWithTotalsAndFilters(buildingID int, startDate, endDate *string, peopleID *int, status *string) ([]InvoiceListItem, error)
 	GetNextInvoiceNo(buildingID int) (string, error)
 	CheckDuplicateInvoiceNo(buildingID int, invoiceNo string, excludeID int) (bool, error)
 }
@@ -175,6 +176,10 @@ func (r *invoiceRepo) CheckDuplicateInvoiceNo(buildingID int, invoiceNo string, 
 }
 
 func (r *invoiceRepo) GetByBuildingIDWithTotals(buildingID int) ([]InvoiceListItem, error) {
+	return r.GetByBuildingIDWithTotalsAndFilters(buildingID, nil, nil, nil, nil)
+}
+
+func (r *invoiceRepo) GetByBuildingIDWithTotalsAndFilters(buildingID int, startDate, endDate *string, peopleID *int, status *string) ([]InvoiceListItem, error) {
 	query := `
 		SELECT 
 			i.id, i.invoice_no, i.transaction_id, i.sales_date, i.due_date, 
@@ -193,10 +198,34 @@ func (r *invoiceRepo) GetByBuildingIDWithTotals(buildingID int) ([]InvoiceListIt
 			), 0) as applied_credits_total
 		FROM invoices i
 		WHERE i.building_id = ?
-		ORDER BY i.createdAt DESC
 	`
 	
-	rows, err := r.db.Query(query, buildingID)
+	args := []interface{}{buildingID}
+	
+	// Add filters
+	if startDate != nil && *startDate != "" {
+		query += " AND DATE(i.sales_date) >= ?"
+		args = append(args, *startDate)
+	}
+	
+	if endDate != nil && *endDate != "" {
+		query += " AND DATE(i.sales_date) <= ?"
+		args = append(args, *endDate)
+	}
+	
+	if peopleID != nil && *peopleID > 0 {
+		query += " AND i.people_id = ?"
+		args = append(args, *peopleID)
+	}
+	
+	if status != nil && *status != "" {
+		query += " AND i.status = ?"
+		args = append(args, *status)
+	}
+	
+	query += " ORDER BY i.createdAt DESC"
+	
+	rows, err := r.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
