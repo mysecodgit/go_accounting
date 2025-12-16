@@ -933,3 +933,319 @@ func (s *ReportsService) GetCustomerBalanceDetails(req CustomerBalanceDetailsReq
 		GrandTotalBalance: grandTotalBalance,
 	}, nil
 }
+
+// calculateAccountBalanceForDateRange calculates the balance of an account for a specific date range
+func (s *ReportsService) calculateAccountBalanceForDateRange(accountID int, startDate string, endDate string, unitID *int) (float64, error) {
+	query := `
+		SELECT 
+			COALESCE(SUM(CASE WHEN s.debit IS NOT NULL THEN s.debit ELSE 0 END), 0) as total_debit,
+			COALESCE(SUM(CASE WHEN s.credit IS NOT NULL THEN s.credit ELSE 0 END), 0) as total_credit
+		FROM splits s
+		INNER JOIN transactions t ON s.transaction_id = t.id
+		WHERE s.account_id = ? 
+			AND s.status = '1'
+			AND t.status = '1'
+			AND DATE(t.transaction_date) >= ?
+			AND DATE(t.transaction_date) <= ?
+	`
+	
+	args := []interface{}{accountID, startDate, endDate}
+	
+	// Add unit filter if provided
+	if unitID != nil && *unitID > 0 {
+		query += ` AND s.unit_id = ?`
+		args = append(args, *unitID)
+	}
+
+	var totalDebit, totalCredit sql.NullFloat64
+	err := s.db.QueryRow(query, args...).Scan(&totalDebit, &totalCredit)
+	if err != nil && err != sql.ErrNoRows {
+		return 0, err
+	}
+
+	// Convert NullFloat64 to float64
+	debitAmount := 0.0
+	if totalDebit.Valid {
+		debitAmount = totalDebit.Float64
+	}
+	creditAmount := 0.0
+	if totalCredit.Valid {
+		creditAmount = totalCredit.Float64
+	}
+
+	// Get account type to determine if it's a debit or credit account
+	_, accountType, _, err := s.accountRepo.GetByID(accountID)
+	if err != nil {
+		return 0, err
+	}
+
+	// Use typeStatus field to determine balance calculation
+	typeStatusLower := strings.ToLower(accountType.TypeStatus)
+
+	// Debit accounts: Debit - Credit (Assets, Expenses)
+	// Credit accounts: Credit - Debit (Liabilities, Equity, Income)
+	if typeStatusLower == "debit" {
+		return debitAmount - creditAmount, nil
+	} else {
+		return creditAmount - debitAmount, nil
+	}
+}
+
+// GetProfitAndLossStandard generates a standard profit and loss report
+func (s *ReportsService) GetProfitAndLossStandard(req ProfitAndLossStandardRequest) (*ProfitAndLossStandardResponse, error) {
+	if req.StartDate == "" || req.EndDate == "" {
+		return nil, fmt.Errorf("start date and end date are required")
+	}
+
+	// Get all accounts for the building
+	accountsList, accountTypes, _, err := s.accountRepo.GetByBuildingID(req.BuildingID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get accounts: %v", err)
+	}
+
+	incomeAccounts := []ProfitAndLossAccount{}
+	expenseAccounts := []ProfitAndLossAccount{}
+	totalIncome := 0.0
+	totalExpenses := 0.0
+
+	for i, account := range accountsList {
+		accountType := accountTypes[i]
+		typeLower := strings.ToLower(accountType.Type)
+
+		// Only process Income and Expense accounts
+		if typeLower != "income" && typeLower != "expense" {
+			continue
+		}
+
+		// Calculate balance for the date range
+		balance, err := s.calculateAccountBalanceForDateRange(account.ID, req.StartDate, req.EndDate, nil)
+		if err != nil {
+			continue // Skip accounts with errors
+		}
+
+		// Skip accounts with 0 balance
+		if balance == 0 {
+			continue
+		}
+
+		accountBalance := ProfitAndLossAccount{
+			AccountID:     account.ID,
+			AccountNumber: account.AccountNumber,
+			AccountName:   account.AccountName,
+			Balance:       balance,
+		}
+
+		if typeLower == "income" {
+			incomeAccounts = append(incomeAccounts, accountBalance)
+			totalIncome += balance
+		} else if typeLower == "expense" {
+			expenseAccounts = append(expenseAccounts, accountBalance)
+			totalExpenses += balance
+		}
+	}
+
+	netProfitLoss := totalIncome - totalExpenses
+
+	return &ProfitAndLossStandardResponse{
+		BuildingID:    req.BuildingID,
+		StartDate:     req.StartDate,
+		EndDate:       req.EndDate,
+		Income:        ProfitAndLossSection{SectionName: "Income", Accounts: incomeAccounts, Total: totalIncome},
+		Expenses:      ProfitAndLossSection{SectionName: "Expenses", Accounts: expenseAccounts, Total: totalExpenses},
+		NetProfitLoss: netProfitLoss,
+	}, nil
+}
+
+// GetProfitAndLossByUnit generates a profit and loss report grouped by unit (pivot table style)
+func (s *ReportsService) GetProfitAndLossByUnit(req ProfitAndLossByUnitRequest) (*ProfitAndLossByUnitResponse, error) {
+	if req.StartDate == "" || req.EndDate == "" {
+		return nil, fmt.Errorf("start date and end date are required")
+	}
+
+	// Get all units for the building
+	query := `SELECT id, name FROM units WHERE building_id = ? ORDER BY name`
+	rows, err := s.db.Query(query, req.BuildingID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get units: %v", err)
+	}
+	defer rows.Close()
+
+	type Unit struct {
+		ID   int
+		Name string
+	}
+	allUnits := []Unit{}
+	for rows.Next() {
+		var unit Unit
+		if err := rows.Scan(&unit.ID, &unit.Name); err != nil {
+			continue
+		}
+		allUnits = append(allUnits, unit)
+	}
+
+	// Get all accounts for the building
+	accountsList, accountTypes, _, err := s.accountRepo.GetByBuildingID(req.BuildingID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get accounts: %v", err)
+	}
+
+	// Build unit columns (only include units that have transactions)
+	unitColumns := []UnitColumn{}
+	unitsWithData := make(map[int]bool)
+
+	// First pass: collect all units that have income or expense data
+	for _, unit := range allUnits {
+		unitID := &unit.ID
+		hasData := false
+
+		for i, account := range accountsList {
+			accountType := accountTypes[i]
+			typeLower := strings.ToLower(accountType.Type)
+			if typeLower != "income" && typeLower != "expense" {
+				continue
+			}
+
+			balance, err := s.calculateAccountBalanceForDateRange(account.ID, req.StartDate, req.EndDate, unitID)
+			if err == nil && balance != 0 {
+				hasData = true
+				break
+			}
+		}
+
+		if hasData {
+			unitsWithData[unit.ID] = true
+			unitColumns = append(unitColumns, UnitColumn{
+				UnitID:   unit.ID,
+				UnitName: unit.Name,
+			})
+		}
+	}
+
+	// Build income account rows
+	incomeAccounts := []AccountRow{}
+	incomeAccountMap := make(map[int]*AccountRow) // account_id -> AccountRow
+
+	for i, account := range accountsList {
+		accountType := accountTypes[i]
+		typeLower := strings.ToLower(accountType.Type)
+		if typeLower != "income" {
+			continue
+		}
+
+		balances := make(map[int]float64)
+		total := 0.0
+
+		for _, unit := range unitColumns {
+			unitID := &unit.UnitID
+			balance, err := s.calculateAccountBalanceForDateRange(account.ID, req.StartDate, req.EndDate, unitID)
+			if err == nil && balance != 0 {
+				balances[unit.UnitID] = balance
+				total += balance
+			}
+		}
+
+		// Only include accounts that have data
+		if total != 0 {
+			accountRow := AccountRow{
+				AccountID:     account.ID,
+				AccountNumber: account.AccountNumber,
+				AccountName:   account.AccountName,
+				AccountType:   "income",
+				Balances:      balances,
+				Total:         total,
+			}
+			incomeAccounts = append(incomeAccounts, accountRow)
+			incomeAccountMap[account.ID] = &incomeAccounts[len(incomeAccounts)-1]
+		}
+	}
+
+	// Build expense account rows
+	expenseAccounts := []AccountRow{}
+	expenseAccountMap := make(map[int]*AccountRow) // account_id -> AccountRow
+
+	for i, account := range accountsList {
+		accountType := accountTypes[i]
+		typeLower := strings.ToLower(accountType.Type)
+		if typeLower != "expense" {
+			continue
+		}
+
+		balances := make(map[int]float64)
+		total := 0.0
+
+		for _, unit := range unitColumns {
+			unitID := &unit.UnitID
+			balance, err := s.calculateAccountBalanceForDateRange(account.ID, req.StartDate, req.EndDate, unitID)
+			if err == nil && balance != 0 {
+				balances[unit.UnitID] = balance
+				total += balance
+			}
+		}
+
+		// Only include accounts that have data
+		if total != 0 {
+			accountRow := AccountRow{
+				AccountID:     account.ID,
+				AccountNumber: account.AccountNumber,
+				AccountName:   account.AccountName,
+				AccountType:   "expense",
+				Balances:      balances,
+				Total:         total,
+			}
+			expenseAccounts = append(expenseAccounts, accountRow)
+			expenseAccountMap[account.ID] = &expenseAccounts[len(expenseAccounts)-1]
+		}
+	}
+
+	// Calculate totals per unit
+	totalIncome := make(map[int]float64)
+	totalExpenses := make(map[int]float64)
+	netProfitLoss := make(map[int]float64)
+
+	for _, unit := range unitColumns {
+		unitIncome := 0.0
+		unitExpenses := 0.0
+
+		for _, accountRow := range incomeAccounts {
+			if balance, ok := accountRow.Balances[unit.UnitID]; ok {
+				unitIncome += balance
+			}
+		}
+
+		for _, accountRow := range expenseAccounts {
+			if balance, ok := accountRow.Balances[unit.UnitID]; ok {
+				unitExpenses += balance
+			}
+		}
+
+		totalIncome[unit.UnitID] = unitIncome
+		totalExpenses[unit.UnitID] = unitExpenses
+		netProfitLoss[unit.UnitID] = unitIncome - unitExpenses
+	}
+
+	// Calculate grand totals
+	grandTotalIncome := 0.0
+	grandTotalExpenses := 0.0
+	for _, total := range totalIncome {
+		grandTotalIncome += total
+	}
+	for _, total := range totalExpenses {
+		grandTotalExpenses += total
+	}
+	grandTotalNetProfitLoss := grandTotalIncome - grandTotalExpenses
+
+	return &ProfitAndLossByUnitResponse{
+		BuildingID:             req.BuildingID,
+		StartDate:              req.StartDate,
+		EndDate:                req.EndDate,
+		Units:                  unitColumns,
+		IncomeAccounts:         incomeAccounts,
+		ExpenseAccounts:        expenseAccounts,
+		TotalIncome:             totalIncome,
+		TotalExpenses:           totalExpenses,
+		NetProfitLoss:          netProfitLoss,
+		GrandTotalIncome:       grandTotalIncome,
+		GrandTotalExpenses:     grandTotalExpenses,
+		GrandTotalNetProfitLoss: grandTotalNetProfitLoss,
+	}, nil
+}

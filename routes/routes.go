@@ -186,6 +186,8 @@ func SetupRoutes(r *gin.Engine) {
 		buildingRoutes.GET("/:id/reports/transaction-details-by-account", reportsHandler.GetTransactionDetailsByAccount)
 		buildingRoutes.GET("/:id/reports/customer-balance-summary", reportsHandler.GetCustomerBalanceSummary)
 		buildingRoutes.GET("/:id/reports/customer-balance-details", reportsHandler.GetCustomerBalanceDetails)
+		buildingRoutes.GET("/:id/reports/profit-and-loss-standard", reportsHandler.GetProfitAndLossStandard)
+		buildingRoutes.GET("/:id/reports/profit-and-loss-by-unit", reportsHandler.GetProfitAndLossByUnit)
 
 		// Sales Receipt routes (building-scoped)
 		buildingRoutes.POST("/:id/sales-receipts/preview", receiptHandler.PreviewSalesReceipt)

@@ -172,3 +172,68 @@ type CustomerBalanceDetailsResponse struct {
 	GrandTotalCredit float64                 `json:"grand_total_credit"`
 	GrandTotalBalance float64                `json:"grand_total_balance"`
 }
+
+// Profit and Loss Standard DTOs
+type ProfitAndLossStandardRequest struct {
+	BuildingID int    `json:"building_id"`
+	StartDate  string `json:"start_date"`
+	EndDate    string `json:"end_date"`
+}
+
+type ProfitAndLossAccount struct {
+	AccountID     int     `json:"account_id"`
+	AccountNumber int     `json:"account_number"`
+	AccountName   string  `json:"account_name"`
+	Balance       float64 `json:"balance"`
+}
+
+type ProfitAndLossSection struct {
+	SectionName string                  `json:"section_name"`
+	Accounts    []ProfitAndLossAccount  `json:"accounts"`
+	Total       float64                 `json:"total"`
+}
+
+type ProfitAndLossStandardResponse struct {
+	BuildingID    int                   `json:"building_id"`
+	StartDate     string                `json:"start_date"`
+	EndDate       string                `json:"end_date"`
+	Income        ProfitAndLossSection  `json:"income"`
+	Expenses      ProfitAndLossSection  `json:"expenses"`
+	NetProfitLoss float64               `json:"net_profit_loss"` // Income - Expenses
+}
+
+// Profit and Loss by Unit DTOs
+type ProfitAndLossByUnitRequest struct {
+	BuildingID int    `json:"building_id"`
+	StartDate  string `json:"start_date"`
+	EndDate    string `json:"end_date"`
+}
+
+type UnitColumn struct {
+	UnitID   int    `json:"unit_id"`
+	UnitName string `json:"unit_name"`
+}
+
+type AccountRow struct {
+	AccountID     int                `json:"account_id"`
+	AccountNumber int                `json:"account_number"`
+	AccountName   string             `json:"account_name"`
+	AccountType   string             `json:"account_type"` // "income" or "expense"
+	Balances      map[int]float64    `json:"balances"`    // unit_id -> balance
+	Total         float64            `json:"total"`
+}
+
+type ProfitAndLossByUnitResponse struct {
+	BuildingID        int                `json:"building_id"`
+	StartDate         string             `json:"start_date"`
+	EndDate           string             `json:"end_date"`
+	Units             []UnitColumn       `json:"units"`              // Column headers
+	IncomeAccounts    []AccountRow       `json:"income_accounts"`    // Income account rows
+	ExpenseAccounts   []AccountRow       `json:"expense_accounts"`   // Expense account rows
+	TotalIncome       map[int]float64    `json:"total_income"`      // unit_id -> total income
+	TotalExpenses     map[int]float64    `json:"total_expenses"`     // unit_id -> total expenses
+	NetProfitLoss     map[int]float64    `json:"net_profit_loss"`   // unit_id -> net profit/loss
+	GrandTotalIncome  float64            `json:"grand_total_income"`
+	GrandTotalExpenses float64           `json:"grand_total_expenses"`
+	GrandTotalNetProfitLoss float64      `json:"grand_total_net_profit_loss"`
+}
