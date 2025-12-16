@@ -63,9 +63,7 @@ func (l *Lease) Validate() map[string]string {
 		errors["service_amount"] = "Service amount cannot be negative"
 	}
 
-	if l.LeaseTerms == "" {
-		errors["lease_terms"] = "Lease terms are required"
-	}
+	// Lease terms is optional, no validation needed
 
 	if len(errors) == 0 {
 		return nil

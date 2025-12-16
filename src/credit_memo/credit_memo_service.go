@@ -15,11 +15,11 @@ import (
 type CreditMemoService struct {
 	creditMemoRepo  CreditMemoRepository
 	transactionRepo transactions.TransactionRepository
-	splitRepo        splits.SplitRepository
-	accountRepo      accounts.AccountRepository
-	accountTypeRepo  account_types.AccountTypeRepository
-	peopleRepo       people.PersonRepository
-	db               *sql.DB
+	splitRepo       splits.SplitRepository
+	accountRepo     accounts.AccountRepository
+	accountTypeRepo account_types.AccountTypeRepository
+	peopleRepo      people.PersonRepository
+	db              *sql.DB
 }
 
 func NewCreditMemoService(
@@ -81,8 +81,8 @@ func (s *CreditMemoService) CalculateSplitsForCreditMemo(req CreateCreditMemoReq
 	splits = append(splits, SplitPreview{
 		AccountID:   req.DepositTo,
 		AccountName: depositAccount.AccountName,
-		PeopleID:    nil,
-		UnitID:      unitIDPtr, // Use unit_id from request
+		PeopleID:    &req.PeopleID, // Link people_id to all splits
+		UnitID:      unitIDPtr,     // Use unit_id from request
 		Debit:       &debitAmount,
 		Credit:      nil,
 		Status:      "1",
@@ -480,4 +480,3 @@ func (s *CreditMemoService) GetCreditMemosByBuildingID(buildingID int) ([]Credit
 
 	return result, nil
 }
-

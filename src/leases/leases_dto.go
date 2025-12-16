@@ -1,5 +1,7 @@
 package leases
 
+import "github.com/mysecodgit/go_accounting/src/people"
+
 type CreateLeaseRequest struct {
 	PeopleID      int     `json:"people_id"`
 	BuildingID    int     `json:"building_id"`
@@ -28,7 +30,11 @@ type UpdateLeaseRequest struct {
 }
 
 type LeaseResponse struct {
-	Lease     Lease       `json:"lease"`
+	Lease      Lease       `json:"lease"`
 	LeaseFiles []LeaseFile `json:"lease_files"`
 }
 
+type LeaseListItem struct {
+	Lease  Lease          `json:"lease"`
+	People *people.Person `json:"people,omitempty"`
+}

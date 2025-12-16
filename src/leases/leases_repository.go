@@ -10,6 +10,7 @@ type LeaseRepository interface {
 	Update(lease Lease) (Lease, error)
 	GetByID(id int) (Lease, error)
 	GetByBuildingID(buildingID int) ([]Lease, error)
+	GetByUnitID(unitID int) ([]Lease, error)
 	Delete(id int) error
 }
 
@@ -105,8 +106,32 @@ func (r *leaseRepo) GetByBuildingID(buildingID int) ([]Lease, error) {
 	return leases, nil
 }
 
+func (r *leaseRepo) GetByUnitID(unitID int) ([]Lease, error) {
+	rows, err := r.db.Query(
+		"SELECT id, people_id, building_id, unit_id, start_date, end_date, rent_amount, deposit_amount, service_amount, lease_terms, status FROM leases WHERE unit_id = ? AND status = '1' ORDER BY id DESC",
+		unitID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	leases := []Lease{}
+	for rows.Next() {
+		var lease Lease
+		err := rows.Scan(
+			&lease.ID, &lease.PeopleID, &lease.BuildingID, &lease.UnitID, &lease.StartDate, &lease.EndDate, &lease.RentAmount, &lease.DepositAmount, &lease.ServiceAmount, &lease.LeaseTerms, &lease.Status,
+		)
+		if err != nil {
+			return nil, err
+		}
+		leases = append(leases, lease)
+	}
+
+	return leases, nil
+}
+
 func (r *leaseRepo) Delete(id int) error {
 	_, err := r.db.Exec("UPDATE leases SET status = '0' WHERE id = ?", id)
 	return err
 }
-

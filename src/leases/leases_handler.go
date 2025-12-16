@@ -39,6 +39,24 @@ func (h *LeaseHandler) GetCustomers(c *gin.Context) {
 	c.JSON(http.StatusOK, customers)
 }
 
+// GET /buildings/:id/leases/customers-with-units
+func (h *LeaseHandler) GetCustomersWithLeaseUnits(c *gin.Context) {
+	buildingIDStr := c.Param("id")
+	buildingID, err := strconv.Atoi(buildingIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid building ID"})
+		return
+	}
+
+	customers, err := h.service.GetCustomersWithLeaseUnits(buildingID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, customers)
+}
+
 // GET /buildings/:id/leases/available-units
 func (h *LeaseHandler) GetAvailableUnits(c *gin.Context) {
 	buildingIDStr := c.Param("id")
@@ -65,6 +83,49 @@ func (h *LeaseHandler) GetAvailableUnits(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, units)
+}
+
+// GET /buildings/:id/leases/units-by-people/:peopleId
+func (h *LeaseHandler) GetUnitsByPeopleID(c *gin.Context) {
+	buildingIDStr := c.Param("id")
+	buildingID, err := strconv.Atoi(buildingIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid building ID"})
+		return
+	}
+
+	peopleIDStr := c.Param("peopleId")
+	peopleID, err := strconv.Atoi(peopleIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid people ID"})
+		return
+	}
+
+	units, err := h.service.GetUnitsByPeopleID(buildingID, peopleID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, units)
+}
+
+// GET /buildings/:id/leases/unit/:unitId
+func (h *LeaseHandler) GetLeasesByUnitID(c *gin.Context) {
+	unitIDStr := c.Param("unitId")
+	unitID, err := strconv.Atoi(unitIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid unit ID"})
+		return
+	}
+
+	leases, err := h.service.GetLeasesByUnitID(unitID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, leases)
 }
 
 // POST /buildings/:id/leases
@@ -303,4 +364,3 @@ func (h *LeaseHandler) DeleteLeaseFile(c *gin.Context) {
 func generateUniqueID() string {
 	return fmt.Sprintf("%d", time.Now().UnixNano())
 }
-

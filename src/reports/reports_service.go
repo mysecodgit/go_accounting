@@ -660,23 +660,31 @@ func (s *ReportsService) GetCustomerBalanceSummary(req CustomerBalanceSummaryReq
 	customerBalances := []CustomerBalance{}
 	totalBalance := 0.0
 
-	// Calculate balance for each customer from all splits
+	// Find Account Receivable account type
+	arAccountTypeID, err := s.findAccountTypeByName("Account Receivable")
+	if err != nil {
+		return nil, fmt.Errorf("failed to find Account Receivable account type: %v", err)
+	}
+
+	// Calculate balance for each customer from splits on Account Receivable accounts only
 	for _, customer := range customers {
-		// Get all splits for this customer up to asOfDate
+		// Get all splits for this customer up to asOfDate, only for Account Receivable accounts
 		query := `
 			SELECT 
 				COALESCE(SUM(CASE WHEN s.debit IS NOT NULL THEN s.debit ELSE 0 END), 0) as total_debit,
 				COALESCE(SUM(CASE WHEN s.credit IS NOT NULL THEN s.credit ELSE 0 END), 0) as total_credit
 			FROM splits s
 			INNER JOIN transactions t ON s.transaction_id = t.id
+			INNER JOIN accounts a ON s.account_id = a.id
 			WHERE s.people_id = ?
+				AND a.account_type = ?
 				AND s.status = '1'
 				AND t.status = '1'
 				AND DATE(t.transaction_date) <= ?
 		`
 
 		var totalDebit, totalCredit sql.NullFloat64
-		err := s.db.QueryRow(query, customer.ID, asOfDate).Scan(&totalDebit, &totalCredit)
+		err := s.db.QueryRow(query, customer.ID, arAccountTypeID, asOfDate).Scan(&totalDebit, &totalCredit)
 		if err != nil && err != sql.ErrNoRows {
 			return nil, fmt.Errorf("failed to calculate balance for customer %d: %v", customer.ID, err)
 		}
@@ -760,9 +768,15 @@ func (s *ReportsService) GetCustomerBalanceDetails(req CustomerBalanceDetailsReq
 	grandTotalCredit := 0.0
 	grandTotalBalance := 0.0
 
+	// Find Account Receivable account type
+	arAccountTypeID, err := s.findAccountTypeByName("Account Receivable")
+	if err != nil {
+		return nil, fmt.Errorf("failed to find Account Receivable account type: %v", err)
+	}
+
 	// Process each customer
 	for _, customer := range customers {
-		// Get all splits for this customer up to asOfDate, ordered by transaction date
+		// Get all splits for this customer up to asOfDate, only for Account Receivable accounts, ordered by transaction date
 		query := `
 			SELECT 
 				s.id as split_id,
@@ -780,13 +794,14 @@ func (s *ReportsService) GetCustomerBalanceDetails(req CustomerBalanceDetailsReq
 			INNER JOIN transactions t ON s.transaction_id = t.id
 			INNER JOIN accounts a ON s.account_id = a.id
 			WHERE s.people_id = ?
+				AND a.account_type = ?
 				AND s.status = '1'
 				AND t.status = '1'
 				AND DATE(t.transaction_date) <= ?
 			ORDER BY t.transaction_date, t.id, s.id
 		`
 
-		rows, err := s.db.Query(query, customer.ID, asOfDate)
+		rows, err := s.db.Query(query, customer.ID, arAccountTypeID, asOfDate)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get splits for customer %d: %v", customer.ID, err)
 		}

@@ -15,8 +15,8 @@ type CreateInvoiceAppliedCreditRequest struct {
 
 type InvoiceAppliedCreditResponse struct {
 	InvoiceAppliedCredit InvoiceAppliedCredit      `json:"invoice_applied_credit"`
-	Splits                []splits.Split            `json:"splits"`
-	Transaction           transactions.Transaction   `json:"transaction"`
+	Splits               []splits.Split           `json:"splits"` // Empty array since we don't create splits
+	Transaction          transactions.Transaction  `json:"transaction"` // Empty transaction since we don't create transactions
 }
 
 type AvailableCreditMemo struct {

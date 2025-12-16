@@ -131,13 +131,14 @@ func (r *accountRepo) GetByID(id int) (Account, account_types.AccountType, build
 }
 
 func (r *accountRepo) GetAll() ([]Account, []account_types.AccountType, []building.Building, error) {
+	// Get all accounts ordered by account_number
 	rows, err := r.db.Query("SELECT a.id, a.account_number, a.account_name, a.account_type, a.building_id, a.isDefault, a.created_at, a.updated_at, " +
 		"at.id, at.typeName, at.`type`, at.sub_type, at.typeStatus, at.created_at, at.updated_at, " +
 		"b.id, b.name, b.created_at, b.updated_at " +
 		"FROM accounts a " +
 		"INNER JOIN account_types at ON a.account_type = at.id " +
 		"INNER JOIN buildings b ON a.building_id = b.id " +
-		"ORDER BY a.created_at DESC")
+		"ORDER BY a.account_number ASC")
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -171,7 +172,7 @@ func (r *accountRepo) GetByBuildingID(buildingID int) ([]Account, []account_type
 		"INNER JOIN account_types at ON a.account_type = at.id "+
 		"INNER JOIN buildings b ON a.building_id = b.id "+
 		"WHERE a.building_id = ? "+
-		"ORDER BY a.created_at DESC", buildingID)
+		"ORDER BY a.account_number ASC", buildingID)
 	if err != nil {
 		return nil, nil, nil, err
 	}

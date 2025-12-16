@@ -67,6 +67,82 @@ func (s *LeaseService) GetCustomersByBuildingID(buildingID int) ([]people.Person
 	return customers, nil
 }
 
+// GetCustomersWithLeaseUnits gets customers with their active lease unit information
+func (s *LeaseService) GetCustomersWithLeaseUnits(buildingID int) ([]map[string]interface{}, error) {
+	// Get all people for the building
+	peopleList, typesList, _, err := s.peopleRepo.GetByBuildingID(buildingID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Find the "customer" type
+	customerTypeID := 0
+	for _, pt := range typesList {
+		if strings.ToLower(pt.Title) == "customer" {
+			customerTypeID = pt.ID
+			break
+		}
+	}
+
+	if customerTypeID == 0 {
+		return []map[string]interface{}{}, nil
+	}
+
+	// Filter people to only customers
+	customers := []people.Person{}
+	for _, p := range peopleList {
+		if p.TypeID == customerTypeID {
+			customers = append(customers, p)
+		}
+	}
+
+	// Get active leases with unit information for these customers
+	query := `
+		SELECT l.people_id, l.unit_id, u.name as unit_name
+		FROM leases l
+		INNER JOIN units u ON l.unit_id = u.id
+		WHERE l.building_id = ? AND l.status = '1'
+	`
+	rows, err := s.db.Query(query, buildingID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query leases: %v", err)
+	}
+	defer rows.Close()
+
+	// Map people_id to unit information
+	leaseUnits := make(map[int]map[string]interface{})
+	for rows.Next() {
+		var peopleID, unitID int
+		var unitName string
+		if err := rows.Scan(&peopleID, &unitID, &unitName); err != nil {
+			return nil, fmt.Errorf("failed to scan lease: %v", err)
+		}
+		leaseUnits[peopleID] = map[string]interface{}{
+			"unit_id":   unitID,
+			"unit_name": unitName,
+		}
+	}
+
+	// Build result with customers and their unit information
+	result := []map[string]interface{}{}
+	for _, customer := range customers {
+		customerData := map[string]interface{}{
+			"id":   customer.ID,
+			"name": customer.Name,
+		}
+		if unitInfo, hasLease := leaseUnits[customer.ID]; hasLease {
+			customerData["unit_id"] = unitInfo["unit_id"]
+			customerData["unit_name"] = unitInfo["unit_name"]
+		} else {
+			customerData["unit_id"] = nil
+			customerData["unit_name"] = nil
+		}
+		result = append(result, customerData)
+	}
+
+	return result, nil
+}
+
 // GetAvailableUnits gets units that don't have active leases, optionally including a specific unit ID
 func (s *LeaseService) GetAvailableUnits(buildingID int, includeUnitID *int) ([]interface{}, error) {
 	// Build query to get units without active leases
@@ -103,6 +179,39 @@ func (s *LeaseService) GetAvailableUnits(buildingID int, includeUnitID *int) ([]
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query available units: %v", err)
+	}
+	defer rows.Close()
+
+	units := []interface{}{}
+	for rows.Next() {
+		var id, buildingID int
+		var name string
+		if err := rows.Scan(&id, &name, &buildingID); err != nil {
+			return nil, fmt.Errorf("failed to scan unit: %v", err)
+		}
+		units = append(units, map[string]interface{}{
+			"id":          id,
+			"name":        name,
+			"building_id": buildingID,
+		})
+	}
+
+	return units, nil
+}
+
+// GetUnitsByPeopleID gets units for a specific people based on their active leases
+func (s *LeaseService) GetUnitsByPeopleID(buildingID, peopleID int) ([]interface{}, error) {
+	query := `
+		SELECT DISTINCT u.id, u.name, u.building_id
+		FROM units u
+		INNER JOIN leases l ON u.id = l.unit_id
+		WHERE l.building_id = ? AND l.people_id = ? AND l.status = '1'
+		ORDER BY u.name
+	`
+
+	rows, err := s.db.Query(query, buildingID, peopleID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query units for people: %v", err)
 	}
 	defer rows.Close()
 
@@ -202,8 +311,56 @@ func (s *LeaseService) GetLeaseByID(id int) (*LeaseResponse, error) {
 	}, nil
 }
 
-func (s *LeaseService) GetLeasesByBuildingID(buildingID int) ([]Lease, error) {
-	return s.leaseRepo.GetByBuildingID(buildingID)
+func (s *LeaseService) GetLeasesByBuildingID(buildingID int) ([]LeaseListItem, error) {
+	leases, err := s.leaseRepo.GetByBuildingID(buildingID)
+	if err != nil {
+		return nil, err
+	}
+
+	result := []LeaseListItem{}
+	for _, lease := range leases {
+		item := LeaseListItem{
+			Lease: lease,
+		}
+
+		// Fetch people information if people_id exists
+		if lease.PeopleID > 0 {
+			person, _, _, err := s.peopleRepo.GetByID(lease.PeopleID)
+			if err == nil {
+				item.People = &person
+			}
+		}
+
+		result = append(result, item)
+	}
+
+	return result, nil
+}
+
+func (s *LeaseService) GetLeasesByUnitID(unitID int) ([]LeaseListItem, error) {
+	leases, err := s.leaseRepo.GetByUnitID(unitID)
+	if err != nil {
+		return nil, err
+	}
+
+	result := []LeaseListItem{}
+	for _, lease := range leases {
+		item := LeaseListItem{
+			Lease: lease,
+		}
+
+		// Fetch people information if people_id exists
+		if lease.PeopleID > 0 {
+			person, _, _, err := s.peopleRepo.GetByID(lease.PeopleID)
+			if err == nil {
+				item.People = &person
+			}
+		}
+
+		result = append(result, item)
+	}
+
+	return result, nil
 }
 
 func (s *LeaseService) DeleteLease(id int) error {
@@ -315,4 +472,3 @@ func (s *LeaseService) DeleteLeaseFile(id int) error {
 func GetUploadPath(buildingID int) string {
 	return filepath.Join("uploads", "leases", fmt.Sprintf("building_%d", buildingID))
 }
-

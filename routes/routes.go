@@ -10,7 +10,6 @@ import (
 	"github.com/mysecodgit/go_accounting/src/checks"
 	"github.com/mysecodgit/go_accounting/src/credit_memo"
 	"github.com/mysecodgit/go_accounting/src/expense_lines"
-	"github.com/mysecodgit/go_accounting/src/leases"
 	"github.com/mysecodgit/go_accounting/src/invoice_applied_credits"
 	"github.com/mysecodgit/go_accounting/src/invoice_items"
 	"github.com/mysecodgit/go_accounting/src/invoice_payments"
@@ -18,9 +17,11 @@ import (
 	"github.com/mysecodgit/go_accounting/src/items"
 	"github.com/mysecodgit/go_accounting/src/journal"
 	"github.com/mysecodgit/go_accounting/src/journal_lines"
+	"github.com/mysecodgit/go_accounting/src/leases"
 	"github.com/mysecodgit/go_accounting/src/people"
 	"github.com/mysecodgit/go_accounting/src/people_types"
 	"github.com/mysecodgit/go_accounting/src/period"
+	"github.com/mysecodgit/go_accounting/src/readings"
 	"github.com/mysecodgit/go_accounting/src/receipt_items"
 	"github.com/mysecodgit/go_accounting/src/reports"
 	"github.com/mysecodgit/go_accounting/src/sales_receipt"
@@ -88,7 +89,7 @@ func SetupRoutes(r *gin.Engine) {
 
 	// Initialize invoice applied credits dependencies
 	appliedCreditRepo := invoice_applied_credits.NewInvoiceAppliedCreditRepository(config.DB)
-	appliedCreditService := invoice_applied_credits.NewInvoiceAppliedCreditService(appliedCreditRepo, invoiceRepo, creditMemoRepo, transactionRepo, splitRepo, accountRepoForInvoice, config.DB)
+	appliedCreditService := invoice_applied_credits.NewInvoiceAppliedCreditService(appliedCreditRepo, invoiceRepo, creditMemoRepo, accountRepoForInvoice)
 	appliedCreditHandler := invoice_applied_credits.NewInvoiceAppliedCreditHandler(appliedCreditService)
 
 	// Initialize journal dependencies
@@ -216,7 +217,10 @@ func SetupRoutes(r *gin.Engine) {
 		leaseHandler := leases.NewLeaseHandler(leaseService)
 
 		buildingRoutes.GET("/:id/leases/customers", leaseHandler.GetCustomers)
+		buildingRoutes.GET("/:id/leases/customers-with-units", leaseHandler.GetCustomersWithLeaseUnits)
 		buildingRoutes.GET("/:id/leases/available-units", leaseHandler.GetAvailableUnits)
+		buildingRoutes.GET("/:id/leases/units-by-people/:peopleId", leaseHandler.GetUnitsByPeopleID)
+		buildingRoutes.GET("/:id/leases/unit/:unitId", leaseHandler.GetLeasesByUnitID)
 		buildingRoutes.POST("/:id/leases", leaseHandler.CreateLease)
 		buildingRoutes.GET("/:id/leases", leaseHandler.GetLeasesByBuildingID)
 		buildingRoutes.GET("/:id/leases/:leaseId", leaseHandler.GetLeaseByID)
@@ -225,6 +229,24 @@ func SetupRoutes(r *gin.Engine) {
 		buildingRoutes.POST("/:id/leases/:leaseId/files", leaseHandler.UploadLeaseFile)
 		buildingRoutes.GET("/:id/leases/:leaseId/files/:fileId/download", leaseHandler.DownloadLeaseFile)
 		buildingRoutes.DELETE("/:id/leases/:leaseId/files/:fileId", leaseHandler.DeleteLeaseFile)
+
+		// Readings routes (building-scoped)
+		readingRepo := readings.NewReadingRepository(config.DB)
+		itemRepoForReading := items.NewItemRepository(config.DB)
+		unitRepoForReading := unit.NewUnitRepository(config.DB)
+		leaseRepoForReading := leases.NewLeaseRepository(config.DB)
+		peopleRepoForReading := people.NewPersonRepository(config.DB)
+		readingService := readings.NewReadingService(readingRepo, itemRepoForReading, unitRepoForReading, leaseRepoForReading, peopleRepoForReading, config.DB)
+		readingHandler := readings.NewReadingHandler(readingService)
+
+		buildingRoutes.GET("/:id/readings", readingHandler.GetReadings)
+		buildingRoutes.GET("/:id/readings/unit/:unitId", readingHandler.GetReadingsByUnitID)
+		buildingRoutes.GET("/:id/readings/latest", readingHandler.GetLatestReading)
+		buildingRoutes.POST("/:id/readings", readingHandler.CreateReading)
+		buildingRoutes.POST("/:id/readings/import", readingHandler.BulkImportReadings)
+		buildingRoutes.GET("/:id/readings/:readingId", readingHandler.GetReadingByID)
+		buildingRoutes.PUT("/:id/readings/:readingId", readingHandler.UpdateReading)
+		buildingRoutes.DELETE("/:id/readings/:readingId", readingHandler.DeleteReading)
 
 		// Journal routes (building-scoped)
 		buildingRoutes.POST("/:id/journals/preview", journalHandler.PreviewJournal)

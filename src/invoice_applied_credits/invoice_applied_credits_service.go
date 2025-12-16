@@ -1,7 +1,6 @@
 package invoice_applied_credits
 
 import (
-	"database/sql"
 	"fmt"
 
 	"github.com/mysecodgit/go_accounting/src/accounts"
@@ -15,29 +14,20 @@ type InvoiceAppliedCreditService struct {
 	appliedCreditRepo InvoiceAppliedCreditRepository
 	invoiceRepo       invoices.InvoiceRepository
 	creditMemoRepo    credit_memo.CreditMemoRepository
-	transactionRepo   transactions.TransactionRepository
-	splitRepo         splits.SplitRepository
 	accountRepo       accounts.AccountRepository
-	db                *sql.DB
 }
 
 func NewInvoiceAppliedCreditService(
 	appliedCreditRepo InvoiceAppliedCreditRepository,
 	invoiceRepo invoices.InvoiceRepository,
 	creditMemoRepo credit_memo.CreditMemoRepository,
-	transactionRepo transactions.TransactionRepository,
-	splitRepo splits.SplitRepository,
 	accountRepo accounts.AccountRepository,
-	db *sql.DB,
 ) *InvoiceAppliedCreditService {
 	return &InvoiceAppliedCreditService{
 		appliedCreditRepo: appliedCreditRepo,
 		invoiceRepo:       invoiceRepo,
 		creditMemoRepo:    creditMemoRepo,
-		transactionRepo:   transactionRepo,
-		splitRepo:         splitRepo,
 		accountRepo:       accountRepo,
-		db:                db,
 	}
 }
 
@@ -247,109 +237,27 @@ func (s *InvoiceAppliedCreditService) ApplyCreditToInvoice(req CreateInvoiceAppl
 		return nil, fmt.Errorf("amount exceeds available credit. Available: %.2f, Requested: %.2f", availableAmount, req.Amount)
 	}
 
-	// Start database transaction
-	tx, err := s.db.Begin()
-	if err != nil {
-		return nil, fmt.Errorf("failed to start transaction: %v", err)
-	}
-
-	committed := false
-	defer func() {
-		if !committed {
-			tx.Rollback()
-		}
-	}()
-
-	// Create transaction record
-	transactionStatus := "1"
-	result, err := tx.Exec("INSERT INTO transactions (type, transaction_date, transaction_number, memo, status, building_id, user_id, unit_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-		"credit applied", req.Date, invoice.InvoiceNo, req.Description, transactionStatus, invoice.BuildingID, userID, invoice.UnitID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create transaction: %v", err)
-	}
-
-	transactionID, err := result.LastInsertId()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get transaction ID: %v", err)
-	}
-
-	// Create invoice applied credit record (must include transaction_id)
+	// Create invoice applied credit record (no transaction or splits needed)
 	appliedCreditStatus := "1"
-	result, err = tx.Exec("INSERT INTO invoice_applied_credits (transaction_id, invoice_id, credit_memo_id, amount, description, date, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		transactionID, req.InvoiceID, req.CreditMemoID, req.Amount, req.Description, req.Date, appliedCreditStatus)
+	appliedCredit := InvoiceAppliedCredit{
+		TransactionID: nil, // No transaction needed
+		InvoiceID:     req.InvoiceID,
+		CreditMemoID:  req.CreditMemoID,
+		Amount:        req.Amount,
+		Description:   req.Description,
+		Date:          req.Date,
+		Status:        appliedCreditStatus,
+	}
+
+	createdAppliedCredit, err := s.appliedCreditRepo.Create(appliedCredit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create invoice applied credit: %v", err)
 	}
 
-	appliedCreditID, err := result.LastInsertId()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get applied credit ID: %v", err)
-	}
-
-	// Validate accounts exist
-	_, _, _, err = s.accountRepo.GetByID(*invoice.ARAccountID)
-	if err != nil {
-		return nil, fmt.Errorf("A/R account not found: %v", err)
-	}
-
-	_, _, _, err = s.accountRepo.GetByID(creditMemo.LiabilityAccount)
-	if err != nil {
-		return nil, fmt.Errorf("liability account not found: %v", err)
-	}
-
-	// Create splits: Debit liability account, Credit A/R account
-	// people_id is set for both splits
-	// Debit: Liability account (reduces liability)
-	debitAmount := req.Amount
-	invoicePeopleIDPtr := invoice.PeopleID
-	_, err = tx.Exec("INSERT INTO splits (transaction_id, account_id, people_id, debit, credit, status) VALUES (?, ?, ?, ?, ?, ?)",
-		transactionID, creditMemo.LiabilityAccount, invoicePeopleIDPtr, debitAmount, nil, "1") // Liability account: people_id is set
-	if err != nil {
-		return nil, fmt.Errorf("failed to create debit split: %v", err)
-	}
-
-	// Credit: A/R account (reduces receivable)
-	creditAmount := req.Amount
-	_, err = tx.Exec("INSERT INTO splits (transaction_id, account_id, people_id, debit, credit, status) VALUES (?, ?, ?, ?, ?, ?)",
-		transactionID, *invoice.ARAccountID, invoicePeopleIDPtr, nil, creditAmount, "1") // AR account: people_id is set
-	if err != nil {
-		return nil, fmt.Errorf("failed to create credit split: %v", err)
-	}
-
-	// Commit transaction
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %v", err)
-	}
-	committed = true
-
-	// Fetch created records
-	createdTransaction, err := s.transactionRepo.GetByID(int(transactionID))
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch transaction: %v", err)
-	}
-
-	createdAppliedCredit, err := s.appliedCreditRepo.GetByID(int(appliedCreditID))
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch applied credit: %v", err)
-	}
-
-	createdSplits, err := s.splitRepo.GetByTransactionID(int(transactionID))
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch splits: %v", err)
-	}
-
-	// Filter to only active splits
-	activeSplits := []splits.Split{}
-	for _, split := range createdSplits {
-		if split.Status == "1" {
-			activeSplits = append(activeSplits, split)
-		}
-	}
-
 	return &InvoiceAppliedCreditResponse{
 		InvoiceAppliedCredit: createdAppliedCredit,
-		Splits:               activeSplits,
-		Transaction:          createdTransaction,
+		Splits:               []splits.Split{}, // No splits
+		Transaction:          transactions.Transaction{}, // No transaction
 	}, nil
 }
 
@@ -371,43 +279,12 @@ func (s *InvoiceAppliedCreditService) DeleteAppliedCredit(appliedCreditID int) e
 		return fmt.Errorf("applied credit is already deleted")
 	}
 
-	// Start transaction for soft deletion
-	tx, err := s.db.Begin()
-	if err != nil {
-		return fmt.Errorf("failed to start transaction: %v", err)
-	}
-
-	committed := false
-	defer func() {
-		if !committed {
-			tx.Rollback()
-		}
-	}()
-
-	// Soft delete the applied credit
+	// Soft delete the applied credit (no transaction or splits to delete)
 	appliedCredit.Status = "0"
-	_, err = tx.Exec("UPDATE invoice_applied_credits SET status = ? WHERE id = ?", appliedCredit.Status, appliedCredit.ID)
+	_, err = s.appliedCreditRepo.Update(appliedCredit)
 	if err != nil {
 		return fmt.Errorf("failed to delete applied credit: %v", err)
 	}
-
-	// Soft delete the splits (set status to '0')
-	_, err = tx.Exec("UPDATE splits SET status = '0' WHERE transaction_id = ?", appliedCredit.TransactionID)
-	if err != nil {
-		return fmt.Errorf("failed to delete splits: %v", err)
-	}
-
-	// Soft delete the transaction
-	_, err = tx.Exec("UPDATE transactions SET status = '0' WHERE id = ?", appliedCredit.TransactionID)
-	if err != nil {
-		return fmt.Errorf("failed to delete transaction: %v", err)
-	}
-
-	// Commit transaction
-	if err = tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %v", err)
-	}
-	committed = true
 
 	return nil
 }

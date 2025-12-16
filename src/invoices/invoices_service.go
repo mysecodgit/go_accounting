@@ -219,7 +219,7 @@ func (s *InvoiceService) CalculateSplitsForInvoice(req CreateInvoiceRequest, use
 		splits = append(splits, SplitPreview{
 			AccountID:   discountIncomeAccount.ID,
 			AccountName: discountIncomeAccount.AccountName,
-			PeopleID:    nil, // Only AR account gets people_id
+			PeopleID:    req.PeopleID, // Link people_id to all splits
 			UnitID:      req.UnitID, // Use unit_id from request
 			Debit:       &discountTotal,
 			Credit:      nil,
@@ -233,7 +233,7 @@ func (s *InvoiceService) CalculateSplitsForInvoice(req CreateInvoiceRequest, use
 		splits = append(splits, SplitPreview{
 			AccountID:   paymentAssetAccount.ID,
 			AccountName: paymentAssetAccount.AccountName,
-			PeopleID:    nil, // Only AR account gets people_id
+			PeopleID:    req.PeopleID, // Link people_id to all splits
 			UnitID:      req.UnitID, // Use unit_id from request
 			Debit:       &paymentTotal,
 			Credit:      nil,
@@ -256,7 +256,7 @@ func (s *InvoiceService) CalculateSplitsForInvoice(req CreateInvoiceRequest, use
 		splits = append(splits, SplitPreview{
 			AccountID:   accountID,
 			AccountName: account.AccountName,
-			PeopleID:    nil, // Only AR account gets people_id
+			PeopleID:    req.PeopleID, // Link people_id to all splits
 			UnitID:      req.UnitID, // Use unit_id from request
 			Debit:       nil,
 			Credit:      &creditAmount,
@@ -274,7 +274,7 @@ func (s *InvoiceService) CalculateSplitsForInvoice(req CreateInvoiceRequest, use
 		splits = append(splits, SplitPreview{
 			AccountID:   accountID,
 			AccountName: account.AccountName,
-			PeopleID:    nil, // Only AR account gets people_id
+			PeopleID:    req.PeopleID, // Link people_id to all splits
 			UnitID:      req.UnitID, // Use unit_id from request
 			Debit:       &debitAmount,
 			Credit:      nil,

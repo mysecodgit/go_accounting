@@ -5,16 +5,16 @@ import (
 )
 
 type InvoiceAppliedCredit struct {
-	ID           int     `json:"id"`
-	TransactionID int    `json:"transaction_id"`
-	InvoiceID    int     `json:"invoice_id"`
-	CreditMemoID int     `json:"credit_memo_id"`
-	Amount       float64 `json:"amount"`
-	Description  string  `json:"description"`
-	Date         string  `json:"date"`
-	Status       string  `json:"status"`
-	CreatedAt    string  `json:"created_at"`
-	UpdatedAt    string  `json:"updated_at"`
+	ID            int      `json:"id"`
+	TransactionID *int     `json:"transaction_id"` // Made nullable since we don't create transactions anymore
+	InvoiceID     int      `json:"invoice_id"`
+	CreditMemoID  int      `json:"credit_memo_id"`
+	Amount        float64 `json:"amount"`
+	Description   string   `json:"description"`
+	Date          string   `json:"date"`
+	Status        string   `json:"status"`
+	CreatedAt     string   `json:"created_at"`
+	UpdatedAt     string   `json:"updated_at"`
 }
 
 func (i *InvoiceAppliedCredit) Validate() map[string]string {
@@ -28,9 +28,7 @@ func (i *InvoiceAppliedCredit) Validate() map[string]string {
 		errors["credit_memo_id"] = "Credit memo ID must be greater than 0"
 	}
 
-	if i.TransactionID <= 0 {
-		errors["transaction_id"] = "Transaction ID must be greater than 0"
-	}
+	// TransactionID is no longer required
 
 	if i.Amount <= 0 {
 		errors["amount"] = "Amount must be greater than 0"
