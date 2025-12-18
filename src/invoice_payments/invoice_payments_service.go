@@ -139,12 +139,12 @@ func (s *InvoicePaymentService) CreateInvoicePayment(req CreateInvoicePaymentReq
 	}
 
 	// Handle positive and negative amounts
-	// Note: people_id is only set for AR account, not for asset account
+	// people_id is set for BOTH splits (asset + A/R) using invoice.people_id
 	// unit_id is set for both splits from the invoice
 	if req.Amount > 0 {
 		// Normal payment: Debit Asset, Credit A/R
 		_, err = tx.Exec("INSERT INTO splits (transaction_id, account_id, people_id, unit_id, debit, credit, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
-			transactionID, assetAccount.ID, nil, unitID, debitAmount, nil, "1") // Asset account: people_id is nil, unit_id from invoice
+			transactionID, assetAccount.ID, peopleID, unitID, debitAmount, nil, "1") // unit_id + people_id from invoice
 		if err != nil {
 			return nil, fmt.Errorf("failed to create asset debit split: %v", err)
 		}
@@ -157,7 +157,7 @@ func (s *InvoicePaymentService) CreateInvoicePayment(req CreateInvoicePaymentReq
 	} else {
 		// Refund/reversal: Credit Asset, Debit A/R
 		_, err = tx.Exec("INSERT INTO splits (transaction_id, account_id, people_id, unit_id, debit, credit, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
-			transactionID, assetAccount.ID, nil, unitID, nil, creditAmount, "1") // Asset account: people_id is nil, unit_id from invoice
+			transactionID, assetAccount.ID, peopleID, unitID, nil, creditAmount, "1") // unit_id + people_id from invoice
 		if err != nil {
 			return nil, fmt.Errorf("failed to create asset credit split: %v", err)
 		}
@@ -264,14 +264,14 @@ func (s *InvoicePaymentService) PreviewInvoicePayment(req CreateInvoicePaymentRe
 	}
 
 	// Handle positive and negative amounts
-	// Note: people_id is only set for AR account, not for asset account
+	// people_id is set for BOTH splits (asset + A/R) using invoice.people_id
 	// unit_id is set for both splits from the invoice
 	if req.Amount > 0 {
 		// Normal payment: Debit Asset, Credit A/R
 		splits = append(splits, SplitPreview{
 			AccountID:   assetAccount.ID,
 			AccountName: assetAccount.AccountName,
-			PeopleID:    nil, // Asset account: people_id is nil
+			PeopleID:    peopleID, // people_id from invoice
 			UnitID:      unitID, // unit_id from invoice
 			Debit:       &debitAmount,
 			Credit:      nil,
@@ -292,7 +292,7 @@ func (s *InvoicePaymentService) PreviewInvoicePayment(req CreateInvoicePaymentRe
 		splits = append(splits, SplitPreview{
 			AccountID:   assetAccount.ID,
 			AccountName: assetAccount.AccountName,
-			PeopleID:    nil, // Asset account: people_id is nil
+			PeopleID:    peopleID, // people_id from invoice
 			UnitID:      unitID, // unit_id from invoice
 			Debit:       nil,
 			Credit:      &creditAmount,
@@ -378,19 +378,13 @@ func (s *InvoicePaymentService) UpdateInvoicePayment(paymentID int, req UpdateIn
 	}
 	defer tx.Rollback()
 
-	// Update transaction memo, date, transaction_number, and unit_id
+	// Update transaction memo, date, transaction_number, unit_id, and status (keep consistent with payment)
 	var unitID interface{}
 	if invoice.UnitID != nil {
 		unitID = *invoice.UnitID
 	} else {
 		unitID = nil
 	}
-	_, err = tx.Exec("UPDATE transactions SET transaction_date = ?, transaction_number = ?, memo = ?, unit_id = ? WHERE id = ?",
-		req.Date, req.Reference, fmt.Sprintf("Payment for Invoice #%s", invoice.InvoiceNo), unitID, existingPayment.TransactionID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to update transaction: %v", err)
-	}
-
 	// Update invoice payment
 	paymentStatus := "1"
 	if req.Status != nil {
@@ -399,6 +393,12 @@ func (s *InvoicePaymentService) UpdateInvoicePayment(paymentID int, req UpdateIn
 		} else {
 			paymentStatus = "0"
 		}
+	}
+
+	_, err = tx.Exec("UPDATE transactions SET transaction_date = ?, transaction_number = ?, memo = ?, unit_id = ?, status = ? WHERE id = ?",
+		req.Date, req.Reference, fmt.Sprintf("Payment for Invoice #%s", invoice.InvoiceNo), unitID, paymentStatus, existingPayment.TransactionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update transaction: %v", err)
 	}
 
 	updatedPayment := existingPayment
@@ -426,6 +426,8 @@ func (s *InvoicePaymentService) UpdateInvoicePayment(paymentID int, req UpdateIn
 	}
 
 	// Create new splits for double-entry accounting
+	// Keep split status consistent with the payment status ("1" active, "0" inactive)
+	splitStatus := paymentStatus
 	debitAmount := req.Amount
 	if debitAmount < 0 {
 		debitAmount = -debitAmount
@@ -451,31 +453,31 @@ func (s *InvoicePaymentService) UpdateInvoicePayment(paymentID int, req UpdateIn
 	}
 
 	// Handle positive and negative amounts
-	// Note: people_id is only set for AR account, not for asset account
+	// people_id is set for BOTH splits (asset + A/R) using invoice.people_id
 	// unit_id is set for both splits from the invoice
 	if req.Amount > 0 {
 		// Normal payment: Debit Asset, Credit A/R
 		_, err = tx.Exec("INSERT INTO splits (transaction_id, account_id, people_id, unit_id, debit, credit, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
-			existingPayment.TransactionID, assetAccount.ID, nil, splitUnitID, debitAmount, nil, "1") // Asset account: people_id is nil, unit_id from invoice
+			existingPayment.TransactionID, assetAccount.ID, peopleID, splitUnitID, debitAmount, nil, splitStatus) // unit_id + people_id from invoice
 		if err != nil {
 			return nil, fmt.Errorf("failed to create asset debit split: %v", err)
 		}
 
 		_, err = tx.Exec("INSERT INTO splits (transaction_id, account_id, people_id, unit_id, debit, credit, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
-			existingPayment.TransactionID, arAccount.ID, peopleID, splitUnitID, nil, creditAmount, "1") // AR account: people_id is set, unit_id from invoice
+			existingPayment.TransactionID, arAccount.ID, peopleID, splitUnitID, nil, creditAmount, splitStatus) // AR account: people_id is set, unit_id from invoice
 		if err != nil {
 			return nil, fmt.Errorf("failed to create A/R credit split: %v", err)
 		}
 	} else {
 		// Refund/reversal: Credit Asset, Debit A/R
 		_, err = tx.Exec("INSERT INTO splits (transaction_id, account_id, people_id, unit_id, debit, credit, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
-			existingPayment.TransactionID, assetAccount.ID, nil, splitUnitID, nil, creditAmount, "1") // Asset account: people_id is nil, unit_id from invoice
+			existingPayment.TransactionID, assetAccount.ID, peopleID, splitUnitID, nil, creditAmount, splitStatus) // unit_id + people_id from invoice
 		if err != nil {
 			return nil, fmt.Errorf("failed to create asset credit split: %v", err)
 		}
 
 		_, err = tx.Exec("INSERT INTO splits (transaction_id, account_id, people_id, unit_id, debit, credit, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
-			existingPayment.TransactionID, arAccount.ID, peopleID, splitUnitID, debitAmount, nil, "1") // AR account: people_id is set, unit_id from invoice
+			existingPayment.TransactionID, arAccount.ID, peopleID, splitUnitID, debitAmount, nil, splitStatus) // AR account: people_id is set, unit_id from invoice
 		if err != nil {
 			return nil, fmt.Errorf("failed to create A/R debit split: %v", err)
 		}

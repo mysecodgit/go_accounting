@@ -3,6 +3,7 @@ package reports
 import (
 	"database/sql"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -153,6 +154,26 @@ func (s *ReportsService) GetBalanceSheet(req BalanceSheetRequest) (*BalanceSheet
 	}
 
 	totalLiabilitiesAndEquity := totalLiabilities + totalEquity
+
+	// Round to 2 decimals for presentation + stable comparisons (avoid floating point artifacts)
+	round2 := func(v float64) float64 {
+		return math.Round(v*100) / 100
+	}
+	for i := range assets {
+		assets[i].Balance = round2(assets[i].Balance)
+	}
+	for i := range liabilities {
+		liabilities[i].Balance = round2(liabilities[i].Balance)
+	}
+	for i := range equity {
+		equity[i].Balance = round2(equity[i].Balance)
+	}
+	totalAssets = round2(totalAssets)
+	totalLiabilities = round2(totalLiabilities)
+	totalEquity = round2(totalEquity)
+	totalLiabilitiesAndEquity = round2(totalLiabilitiesAndEquity)
+
+	// Consider balanced if equal at 2-decimal precision
 	isBalanced := totalAssets == totalLiabilitiesAndEquity
 
 	return &BalanceSheetResponse{

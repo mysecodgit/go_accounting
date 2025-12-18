@@ -55,8 +55,8 @@ func (r *invoicePaymentRepo) Update(payment InvoicePayment) (InvoicePayment, err
 
 func (r *invoicePaymentRepo) GetByID(id int) (InvoicePayment, error) {
 	var payment InvoicePayment
-	err := r.db.QueryRow("SELECT id, transaction_id, date, invoice_id, user_id, account_id, amount, status, createdAt, updatedAt FROM invoice_payments WHERE id = ?", id).
-		Scan(&payment.ID, &payment.TransactionID, &payment.Date, &payment.InvoiceID, &payment.UserID, &payment.AccountID, &payment.Amount, &payment.Status, &payment.CreatedAt, &payment.UpdatedAt)
+	err := r.db.QueryRow("SELECT id, transaction_id, reference, date, invoice_id, user_id, account_id, amount, status, createdAt, updatedAt FROM invoice_payments WHERE id = ?", id).
+		Scan(&payment.ID, &payment.TransactionID, &payment.Reference, &payment.Date, &payment.InvoiceID, &payment.UserID, &payment.AccountID, &payment.Amount, &payment.Status, &payment.CreatedAt, &payment.UpdatedAt)
 
 	if err == sql.ErrNoRows {
 		return payment, fmt.Errorf("invoice payment not found")

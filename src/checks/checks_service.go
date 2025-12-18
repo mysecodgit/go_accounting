@@ -3,6 +3,7 @@ package checks
 import (
 	"database/sql"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/mysecodgit/go_accounting/src/account_types"
@@ -117,7 +118,13 @@ func (s *CheckService) CalculateSplitsForCheck(req CreateCheckRequest, userID in
 		return nil, fmt.Errorf("check must have at least 2 splits for double-entry accounting, got %d", len(splits))
 	}
 
-	if totalDebit != totalCredit {
+	totalDebitCent := int64(math.Round(totalDebit * 100))
+totalCreditCent  := int64(math.Round(totalCredit * 100))
+
+	// use this library later import "github.com/shopspring/decimal"
+
+	if totalDebitCent != totalCreditCent {
+		fmt.Println("splits are not balanced: total debit :", totalDebitCent, "!= total credit :" , totalCreditCent)
 		return nil, fmt.Errorf("splits are not balanced: total debit %.2f != total credit %.2f", totalDebit, totalCredit)
 	}
 
