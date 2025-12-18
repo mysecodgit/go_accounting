@@ -199,7 +199,7 @@ func (s *ReportsService) calculateAccountBalance(accountID int, asOfDate string)
 		WHERE s.account_id = ? 
 			AND s.status = '1'
 			AND t.status = '1'
-			AND DATE(t.transaction_date) <= ?
+			AND DATE(t.transaction_date) <= ? 
 	`
 
 	var totalDebit, totalCredit sql.NullFloat64

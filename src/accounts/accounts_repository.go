@@ -213,7 +213,7 @@ func (r *accountRepo) BuildingIDExists(buildingID int) (bool, error) {
 func (r *accountRepo) CheckDuplicateAccountNumber(buildingID int, accountNumber int, excludeID int) (bool, error) {
 	var count int
 	var err error
-	
+
 	if excludeID > 0 {
 		err = r.db.QueryRow(
 			"SELECT COUNT(*) FROM accounts WHERE building_id = ? AND account_number = ? AND id != ?",
@@ -223,18 +223,18 @@ func (r *accountRepo) CheckDuplicateAccountNumber(buildingID int, accountNumber 
 			"SELECT COUNT(*) FROM accounts WHERE building_id = ? AND account_number = ?",
 			buildingID, accountNumber).Scan(&count)
 	}
-	
+
 	if err != nil {
 		return false, err
 	}
-	
+
 	return count > 0, nil
 }
 
 func (r *accountRepo) CheckDuplicateAccountName(buildingID int, accountName string, excludeID int) (bool, error) {
 	var count int
 	var err error
-	
+
 	if excludeID > 0 {
 		err = r.db.QueryRow(
 			"SELECT COUNT(*) FROM accounts WHERE building_id = ? AND account_name = ? AND id != ?",
@@ -244,11 +244,10 @@ func (r *accountRepo) CheckDuplicateAccountName(buildingID int, accountName stri
 			"SELECT COUNT(*) FROM accounts WHERE building_id = ? AND account_name = ?",
 			buildingID, accountName).Scan(&count)
 	}
-	
+
 	if err != nil {
 		return false, err
 	}
-	
+
 	return count > 0, nil
 }
-
