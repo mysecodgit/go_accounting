@@ -956,6 +956,10 @@ func (s *ReportsService) GetCustomerBalanceDetails(req CustomerBalanceDetailsReq
 }
 
 // calculateAccountBalanceForDateRange calculates the balance of an account for a specific date range
+// unitID can be:
+//   - nil: all splits (no unit filter)
+//   - > 0: specific unit
+//   - 0: no unit (unit_id IS NULL) - special case for "No Unit" column
 func (s *ReportsService) calculateAccountBalanceForDateRange(accountID int, startDate string, endDate string, unitID *int) (float64, error) {
 	query := `
 		SELECT 
@@ -973,9 +977,16 @@ func (s *ReportsService) calculateAccountBalanceForDateRange(accountID int, star
 	args := []interface{}{accountID, startDate, endDate}
 	
 	// Add unit filter if provided
-	if unitID != nil && *unitID > 0 {
-		query += ` AND s.unit_id = ?`
-		args = append(args, *unitID)
+	if unitID != nil {
+		if *unitID == 0 {
+			// Special case: "No Unit" - filter for splits where unit_id IS NULL
+			query += ` AND s.unit_id IS NULL`
+		} else if *unitID > 0 {
+			// Specific unit
+			query += ` AND s.unit_id = ?`
+			args = append(args, *unitID)
+		}
+		// If unitID is nil, no filter is applied (all splits)
 	}
 
 	var totalDebit, totalCredit sql.NullFloat64
@@ -1142,6 +1153,32 @@ func (s *ReportsService) GetProfitAndLossByUnit(req ProfitAndLossByUnitRequest) 
 		}
 	}
 
+	// Check if "No Unit" column should be included (transactions without unit_id)
+	hasNoUnitData := false
+	noUnitID := 0
+	for i, account := range accountsList {
+		accountType := accountTypes[i]
+		typeLower := strings.ToLower(accountType.Type)
+		if typeLower != "income" && typeLower != "expense" {
+			continue
+		}
+
+		balance, err := s.calculateAccountBalanceForDateRange(account.ID, req.StartDate, req.EndDate, &noUnitID)
+		if err == nil && balance != 0 {
+			hasNoUnitData = true
+			break
+		}
+	}
+
+	// Add "No Unit" column if there's data
+	if hasNoUnitData {
+		unitColumns = append(unitColumns, UnitColumn{
+			UnitID:   0, // Use 0 as special ID for "No Unit"
+			UnitName: "No Unit",
+		})
+		unitsWithData[0] = true
+	}
+
 	// Build income account rows
 	incomeAccounts := []AccountRow{}
 	incomeAccountMap := make(map[int]*AccountRow) // account_id -> AccountRow
@@ -1157,7 +1194,13 @@ func (s *ReportsService) GetProfitAndLossByUnit(req ProfitAndLossByUnitRequest) 
 		total := 0.0
 
 		for _, unit := range unitColumns {
-			unitID := &unit.UnitID
+			var unitID *int
+			if unit.UnitID == 0 {
+				// Special case: "No Unit" column
+				unitID = &unit.UnitID // This will be 0, which triggers NULL filter
+			} else {
+				unitID = &unit.UnitID
+			}
 			balance, err := s.calculateAccountBalanceForDateRange(account.ID, req.StartDate, req.EndDate, unitID)
 			if err == nil && balance != 0 {
 				balances[unit.UnitID] = balance
@@ -1195,7 +1238,13 @@ func (s *ReportsService) GetProfitAndLossByUnit(req ProfitAndLossByUnitRequest) 
 		total := 0.0
 
 		for _, unit := range unitColumns {
-			unitID := &unit.UnitID
+			var unitID *int
+			if unit.UnitID == 0 {
+				// Special case: "No Unit" column
+				unitID = &unit.UnitID // This will be 0, which triggers NULL filter
+			} else {
+				unitID = &unit.UnitID
+			}
 			balance, err := s.calculateAccountBalanceForDateRange(account.ID, req.StartDate, req.EndDate, unitID)
 			if err == nil && balance != 0 {
 				balances[unit.UnitID] = balance
