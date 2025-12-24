@@ -100,10 +100,15 @@ func (h *ReportsHandler) GetTransactionDetailsByAccount(c *gin.Context) {
 		}
 	}
 
-	if accountIDStr := c.Query("account_id"); accountIDStr != "" {
-		accountID, err := strconv.Atoi(accountIDStr)
-		if err == nil {
-			req.AccountID = &accountID
+	// Support multiple account_id query parameters
+	accountIDStrs := c.QueryArray("account_id")
+	if len(accountIDStrs) > 0 {
+		req.AccountIDs = []int{}
+		for _, accountIDStr := range accountIDStrs {
+			accountID, err := strconv.Atoi(accountIDStr)
+			if err == nil && accountID > 0 {
+				req.AccountIDs = append(req.AccountIDs, accountID)
+			}
 		}
 	}
 

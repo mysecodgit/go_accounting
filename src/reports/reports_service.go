@@ -491,14 +491,18 @@ func (s *ReportsService) GetTransactionDetailsByAccount(req TransactionDetailsBy
 	var accountTypesList []account_types.AccountType
 	var err error
 
-	if req.AccountID != nil && *req.AccountID > 0 {
-		// Get specific account
-		account, accountType, _, err := s.accountRepo.GetByID(*req.AccountID)
-		if err != nil {
-			return nil, fmt.Errorf("account not found: %v", err)
+	if len(req.AccountIDs) > 0 {
+		// Get specific accounts
+		accountsList = []accounts.Account{}
+		accountTypesList = []account_types.AccountType{}
+		for _, accountID := range req.AccountIDs {
+			account, accountType, _, err := s.accountRepo.GetByID(accountID)
+			if err != nil {
+				return nil, fmt.Errorf("account not found (ID: %d): %v", accountID, err)
+			}
+			accountsList = append(accountsList, account)
+			accountTypesList = append(accountTypesList, accountType)
 		}
-		accountsList = []accounts.Account{account}
-		accountTypesList = []account_types.AccountType{accountType}
 	} else {
 		// Get all accounts for the building
 		accountsList, accountTypesList, _, err = s.accountRepo.GetByBuildingID(req.BuildingID)

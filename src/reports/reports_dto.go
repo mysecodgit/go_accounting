@@ -58,11 +58,11 @@ type TrialBalanceResponse struct {
 
 // Transaction Details by Account DTOs
 type TransactionDetailsByAccountRequest struct {
-	BuildingID int    `json:"building_id"`
-	AccountID  *int   `json:"account_id"` // Optional: filter by specific account
-	UnitID     *int   `json:"unit_id"`    // Optional: filter by specific unit
-	StartDate  string `json:"start_date"`
-	EndDate    string `json:"end_date"`
+	BuildingID int     `json:"building_id"`
+	AccountIDs []int   `json:"account_ids"` // Optional: filter by specific account(s)
+	UnitID     *int    `json:"unit_id"`    // Optional: filter by specific unit
+	StartDate  string  `json:"start_date"`
+	EndDate    string  `json:"end_date"`
 }
 
 type TransactionDetailSplit struct {
