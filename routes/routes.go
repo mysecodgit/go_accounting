@@ -11,6 +11,7 @@ import (
 	"github.com/mysecodgit/go_accounting/src/credit_memo"
 	"github.com/mysecodgit/go_accounting/src/expense_lines"
 	"github.com/mysecodgit/go_accounting/src/invoice_applied_credits"
+	"github.com/mysecodgit/go_accounting/src/invoice_applied_discounts"
 	"github.com/mysecodgit/go_accounting/src/invoice_items"
 	"github.com/mysecodgit/go_accounting/src/invoice_payments"
 	"github.com/mysecodgit/go_accounting/src/invoices"
@@ -92,6 +93,10 @@ func SetupRoutes(r *gin.Engine) {
 	appliedCreditService := invoice_applied_credits.NewInvoiceAppliedCreditService(appliedCreditRepo, invoiceRepo, creditMemoRepo, accountRepoForInvoice)
 	appliedCreditHandler := invoice_applied_credits.NewInvoiceAppliedCreditHandler(appliedCreditService)
 
+	appliedDiscountRepo := invoice_applied_discounts.NewInvoiceAppliedDiscountRepository(config.DB)
+	appliedDiscountService := invoice_applied_discounts.NewInvoiceAppliedDiscountService(appliedDiscountRepo, invoiceRepo, accountRepoForInvoice, transactionRepo, splitRepo, config.DB)
+	appliedDiscountHandler := invoice_applied_discounts.NewInvoiceAppliedDiscountHandler(appliedDiscountService)
+
 	// Initialize journal dependencies
 	journalRepo := journal.NewJournalRepository(config.DB)
 	journalLineRepo := journal_lines.NewJournalLineRepository(config.DB)
@@ -170,6 +175,11 @@ func SetupRoutes(r *gin.Engine) {
 		buildingRoutes.POST("/:id/invoices/:invoiceId/apply-credit", appliedCreditHandler.ApplyCreditToInvoice)
 		buildingRoutes.GET("/:id/invoices/:invoiceId/applied-credits", appliedCreditHandler.GetAppliedCredits)
 		buildingRoutes.DELETE("/:id/invoice-applied-credits/:appliedCreditId", appliedCreditHandler.DeleteAppliedCredit)
+		// Applied discounts routes (must come before single invoice route)
+		buildingRoutes.POST("/:id/invoices/:invoiceId/preview-apply-discount", appliedDiscountHandler.PreviewApplyDiscount)
+		buildingRoutes.POST("/:id/invoices/:invoiceId/apply-discount", appliedDiscountHandler.ApplyDiscountToInvoice)
+		buildingRoutes.GET("/:id/invoices/:invoiceId/applied-discounts", appliedDiscountHandler.GetAppliedDiscounts)
+		buildingRoutes.DELETE("/:id/invoice-applied-discounts/:appliedDiscountId", appliedDiscountHandler.DeleteAppliedDiscount)
 		buildingRoutes.PUT("/:id/invoices/:invoiceId", invoiceHandler.UpdateInvoice)
 		buildingRoutes.GET("/:id/invoices/:invoiceId", invoiceHandler.GetInvoice)
 
